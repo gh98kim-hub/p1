@@ -116,7 +116,9 @@ def ai_pitches(clusters, materials, notes, config):
         materials=build_materials_text(clusters, materials, notes, ai.get("max_clusters", 15)),
     )
 
-    client = anthropic.Anthropic()
+    # 설정 파일(GUI)에 저장한 키가 있으면 우선, 없으면 환경변수 ANTHROPIC_API_KEY
+    key = config.get("anthropic_api_key") or None
+    client = anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic()
     try:
         with client.beta.messages.stream(
             model=ai.get("model", "claude-opus-5-5"),
@@ -131,7 +133,7 @@ def ai_pitches(clusters, materials, notes, config):
         ) as stream:
             response = stream.get_final_message()
     except anthropic.AuthenticationError:
-        return "> AI 발제안 실패: API 키가 올바르지 않습니다(ANTHROPIC_API_KEY 확인)."
+        return "> AI 발제안 실패: Claude API 키가 올바르지 않습니다."
     except anthropic.RateLimitError:
         return "> AI 발제안 실패: 호출 한도 초과. 잠시 후 다시 실행하세요."
     except anthropic.APIStatusError as e:

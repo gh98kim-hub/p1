@@ -1,0 +1,66 @@
+name: Windows exe 빌드
+
+on:
+  push:
+    branches: [claude/presentation-helper-program-7ybez1]
+    paths:
+      - "balje/**"
+      - "app.py"
+      - "style/**"
+      - "samples/**"
+      - "requirements.txt"
+      - ".github/workflows/build-exe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt pyinstaller pytest
+
+      - name: 테스트
+        run: python -m pytest -q
+
+      - name: exe 만들기
+        run: >
+          pyinstaller --noconfirm --onefile --windowed --name Balje
+          --add-data "style/house_style.md;style"
+          --add-data "samples;samples"
+          app.py
+
+      - name: exe 자체 점검(창·샘플 실행·HTTPS 연결)
+        shell: pwsh
+        env:
+          BALJE_SELFTEST_NET: "1"
+        run: |
+          New-Item -ItemType Directory -Force st | Out-Null
+          Copy-Item dist\Balje.exe st\
+          $p = Start-Process -FilePath st\Balje.exe -ArgumentList '--selftest', "$PWD\st\result.txt" -Wait -PassThru
+          Get-Content st\result.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Balje-windows
+          path: dist/Balje.exe
+
+      - name: 다운로드 페이지(릴리스)에 올리기
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete balje-latest --yes --cleanup-tag || true
+          gh release create balje-latest dist/Balje.exe \
+            --target "$GITHUB_SHA" \
+            --title "발제 도우미 (Windows)" \
+            --notes "Balje.exe를 내려받아 원하는 폴더에 두고 더블클릭하세요. 설정과 결과는 exe가 있는 폴더에 저장됩니다."

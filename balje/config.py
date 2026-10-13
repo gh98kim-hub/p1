@@ -76,6 +76,10 @@ DEFAULTS = {
     },
     # 도메인 → 매체명 추가 매핑(기본 표에 없는 매체)
     "press_map": {},
+    # API 키(비워두면 환경변수 NAVER_CLIENT_ID / NAVER_CLIENT_SECRET / ANTHROPIC_API_KEY 사용)
+    "naver_client_id": "",
+    "naver_client_secret": "",
+    "anthropic_api_key": "",
 }
 
 
@@ -95,3 +99,15 @@ def load_config(path="config.json"):
         return _merge(DEFAULTS, {})
     with p.open(encoding="utf-8") as f:
         return _merge(DEFAULTS, json.load(f))
+
+
+def save_config(values, path="config.json"):
+    """기존 config.json에 values를 덮어써 저장한다(GUI 설정 저장용)."""
+    p = Path(path)
+    current = {}
+    if p.exists():
+        with p.open(encoding="utf-8") as f:
+            current = json.load(f)
+    current.update(values)
+    with p.open("w", encoding="utf-8") as f:
+        json.dump(current, f, ensure_ascii=False, indent=2)

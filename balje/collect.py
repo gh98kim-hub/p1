@@ -101,8 +101,9 @@ def fetch_naver(keyword, pages=1, client_id=None, client_secret=None, press_map=
     client_secret = client_secret or os.environ.get("NAVER_CLIENT_SECRET")
     if not client_id or not client_secret:
         raise RuntimeError(
-            "NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수가 없습니다. "
-            "네이버 개발자센터에서 검색 API 키를 발급받아 설정하거나, --input 으로 기사 파일을 넣으세요."
+            "네이버 API 키가 없습니다. 네이버 개발자센터에서 검색 API 키를 발급받아 "
+            "설정(프로그램의 [설정] 또는 NAVER_CLIENT_ID / NAVER_CLIENT_SECRET 환경변수)하거나, "
+            "기사 파일을 불러오세요."
         )
     articles = []
     for page in range(pages):
