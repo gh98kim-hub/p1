@@ -1,0 +1,100 @@
+[
+  {
+    "title": "A자동차, 3분기 영업이익 3조2천억원…전년比 12% 감소",
+    "link": "https://example.com/news/1",
+    "press": "가상경제",
+    "date": "2026-10-13 07:10",
+    "description": "A자동차가 3분기 영업이익 3조2천억원을 기록했다고 밝혔다. 환율과 인센티브 증가가 영향을 줬다."
+  },
+  {
+    "title": "A자동차 3분기 영업이익 12% 줄어…인센티브 부담",
+    "link": "https://example.com/news/2",
+    "press": "가상일보",
+    "date": "2026-10-13 07:25",
+    "description": "A자동차 3분기 영업이익이 전년 동기 대비 12% 감소했다."
+  },
+  {
+    "title": "A자동차 영업이익 3조2천억…3분기 실적 둔화",
+    "link": "https://example.com/news/3",
+    "press": "가상뉴스",
+    "date": "2026-10-13 07:40",
+    "description": "A자동차 3분기 실적이 둔화됐다."
+  },
+  {
+    "title": "[종합] A자동차 3분기 영업이익 감소…관세 부담 반영",
+    "link": "https://example.com/news/4",
+    "press": "가상통신",
+    "date": "2026-10-13 08:05",
+    "description": "관세 비용이 3분기 실적에 반영됐다."
+  },
+  {
+    "title": "A자동차 실적 발표, 3분기 영업이익 3.2조",
+    "link": "https://example.com/news/5",
+    "press": "가상비즈",
+    "date": "2026-10-13 08:20",
+    "description": ""
+  },
+  {
+    "title": "[단독] B모터스, 중형 전기 SUV 내년 상반기 국내 출시",
+    "link": "https://example.com/news/6",
+    "press": "가상경제",
+    "date": "2026-10-13 06:30",
+    "description": "B모터스가 중형 전기 SUV를 내년 상반기 국내에 출시하는 방안을 추진 중인 것으로 알려졌다."
+  },
+  {
+    "title": "B모터스 중형 전기 SUV 국내 출시 추진",
+    "link": "https://example.com/news/7",
+    "press": "가상일보",
+    "date": "2026-10-13 09:10",
+    "description": "B모터스가 전기 SUV 출시를 검토하고 있다."
+  },
+  {
+    "title": "C배터리, 북미 공장 증설 2조원 투자",
+    "link": "https://example.com/news/8",
+    "press": "가상뉴스",
+    "date": "2026-10-13 05:50",
+    "description": "C배터리가 북미 배터리 공장 증설에 2조원을 투자한다."
+  },
+  {
+    "title": "C배터리 북미 공장 2조원 증설 투자 결정",
+    "link": "https://example.com/news/9",
+    "press": "가상통신",
+    "date": "2026-10-13 06:15",
+    "description": "C배터리 이사회가 증설 투자를 의결했다."
+  },
+  {
+    "title": "C배터리, 북미 배터리 공장 증설…2조원 투입",
+    "link": "https://example.com/news/10",
+    "press": "가상비즈",
+    "date": "2026-10-13 06:40",
+    "description": ""
+  },
+  {
+    "title": "D차 노조, 임단협 결렬 선언…파업 수순",
+    "link": "https://example.com/news/11",
+    "press": "가상일보",
+    "date": "2026-10-12 22:10",
+    "description": "D차 노조가 임금협상 결렬을 선언했다."
+  },
+  {
+    "title": "D차 노조 임단협 결렬…파업 찬반투표 예고",
+    "link": "https://example.com/news/12",
+    "press": "가상통신",
+    "date": "2026-10-13 07:00",
+    "description": "노조는 다음 주 파업 찬반투표를 진행할 예정이다."
+  },
+  {
+    "title": "E사 소형 SUV 1만2천대 리콜…연료펌프 결함",
+    "link": "https://example.com/news/13",
+    "press": "가상뉴스",
+    "date": "2026-10-13 08:45",
+    "description": "국토부는 E사 소형 SUV 1만2천대를 리콜한다고 밝혔다."
+  },
+  {
+    "title": "자동차 부품 업계, 겨울 타이어 수요 늘어",
+    "link": "https://example.com/news/14",
+    "press": "가상비즈",
+    "date": "2026-10-13 09:30",
+    "description": "겨울철을 앞두고 타이어 수요가 증가하고 있다."
+  }
+]

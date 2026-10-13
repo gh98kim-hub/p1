@@ -1,0 +1,16 @@
+{
+  "keywords": ["현대차", "기아", "전기차", "자동차 관세", "완성차"],
+  "pages_per_keyword": 1,
+  "lookback_hours": 24,
+  "my_press": "",
+  "watch_terms": ["현대차", "현대자동차", "기아", "제네시스", "KG모빌리티", "르노코리아", "한국GM", "테슬라", "BYD"],
+  "output_dir": "output",
+  "ai": {
+    "model": "claude-opus-5-5",
+    "effort": "high",
+    "max_pitches": 5,
+    "max_clusters": 15,
+    "style_file": "style/house_style.md"
+  },
+  "press_map": {}
+}
