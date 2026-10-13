@@ -61,7 +61,7 @@ def test_load_json_wrapped_in_items(tmp_path):
 def test_clustering_groups_same_issue():
     clusters, _ = _clusters()
     sizes = sorted((len(c.articles) for c in clusters), reverse=True)
-    assert sizes == [5, 3, 2, 2, 2, 1, 1, 1, 1, 1]
+    assert sizes == [5, 3, 2, 2, 2, 2, 1, 1, 1, 1, 1]
     top = clusters[0]
     assert "A자동차" in top.headline and not top.headline.startswith("[")
     assert {"실적", "관세·통상"} <= set(top.angles)
@@ -254,6 +254,114 @@ def test_cli_end_to_end(tmp_path):
     assert rc == 0
     md = next(out.glob("발제노트_*.md")).read_text(encoding="utf-8")
     html = next(out.glob("발제노트_*.html")).read_text(encoding="utf-8")
-    assert "오늘의 이슈 순위" in md and "[A001]" in md
+    for title in ("1. 발제 후보", "2. AI 발제안", "3. 보도자료 점검", "4. 묶음 기획 소재",
+                  "5. 앵글 바꾸기", "6. 외신", "7. 브랜드별 기사량", "8. 전체 이슈 목록"):
+        assert f"## {title}" in md
     assert "<html" in html and "B모터스" in html
-    assert "보도자료 점검" in md and "묶어보기" in md and "브랜드별 기사량" in md and "틀어보기" in md
+
+
+# ---------------------------------------------------------------- 본문·외신·정렬·링크
+
+FIX = ROOT / "tests" / "fixtures"
+
+
+def test_extract_body_naver_and_generic():
+    raw = (FIX / "naver_article.html").read_bytes()
+    body = collect.extract_body(collect._decode(raw, None))
+    assert body.startswith("가상자동차가 13일") and "업계는 연말 출시를 예상한다." in body
+    assert "사진 설명" not in body and "스크립트" not in body and "기자" not in body
+    raw = (FIX / "generic_article.html").read_bytes()  # euc-kr
+    body = collect.extract_body(collect._decode(raw, None))
+    assert "3분기 국내 판매가 2만대" in body and "메뉴" not in body and "짧은줄" not in body
+    assert collect.extract_body("<html><body><p>짧다</p></body></html>") == ""
+
+
+def test_parse_google_news():
+    arts = collect.parse_google_news((FIX / "google_news.xml").read_bytes(), "q")
+    assert [a.press for a in arts] == ["Example Wire", "Sample Times"]
+    assert arts[0].title == "Acme Motors to build new EV plant in Georgia"
+    assert arts[0].description == "" and arts[0].lang == "en" and arts[0].published.hour == 1
+
+
+def test_normalize_link():
+    assert collect.normalize_link("www.example.com/a") == "https://www.example.com/a"
+    assert collect.normalize_link("//example.com/a") == "https://example.com/a"
+    assert collect.normalize_link("http://example.com") == "http://example.com"
+    assert collect.normalize_link("") == ""
+
+
+def test_sort_latest_and_articles_newest_first():
+    clusters, _ = _clusters()
+    latest = analyze.sort_clusters(clusters, "latest")
+    times = [c.latest for c in latest]
+    assert times == sorted(times, reverse=True)
+    assert analyze.sort_clusters(clusters, "score")[0].score == max(c.score for c in clusters)
+    for c in clusters:
+        ts = [a.published for a in c.articles]
+        assert ts == sorted(ts, reverse=True)
+    # 대표 제목은 정렬과 무관하게 유지
+    assert _by(clusters, "A자동차").headline == "A자동차 3분기 영업이익 감소…관세 부담 반영"
+
+
+def test_foreign_cluster_flag():
+    clusters, _ = _clusters()
+    f = [c for c in clusters if c.foreign]
+    assert len(f) == 1 and len(f[0].articles) == 2 and f[0].release_kind == ""
+    assert "Acme Motors" in f[0].brands
+
+
+def _run_full(tmp_path, monkeypatch, **cfg_over):
+    """네트워크 수집을 가짜로 바꿔 파이프라인 전체를 돌린다."""
+    from balje import pipeline
+    sample = collect.load_articles(SAMPLE)
+    ko = [a for a in sample if a.lang == "ko"]
+    for a in ko[:3]:
+        a.naver_link = "https://n.news.naver.com/mnews/article/001/" + a.link[-1]
+    monkeypatch.setattr(collect, "fetch_naver", lambda kw, *a, **k: [x for x in ko if x.keyword == "" and kw == "완성차"])
+    monkeypatch.setattr(collect, "fetch_google_news", lambda q, *a, **k: collect.parse_google_news(
+        (FIX / "google_news.xml").read_bytes(), q) if q == "Hyundai Motor" else [])
+    fetched = []
+
+    def fake_body(a, max_chars=6000):
+        fetched.append(a)
+        return f"{a.title} 본문 전문입니다. " * 5
+
+    monkeypatch.setattr(collect, "fetch_body", fake_body)
+    monkeypatch.setattr(pipeline.time, "sleep", lambda s: None)
+    cfg = _config(search_brands=False, keywords=["완성차"], **cfg_over)
+    cfg["foreign"] = dict(cfg["foreign"], enabled=True, queries=["Hyundai Motor", "Tesla"])
+    cfg["bodies"] = dict(cfg["bodies"], enabled=True, issues=3, per_issue=2)
+    cfg["history_file"] = str(tmp_path / "h.json")
+    res = pipeline.run(cfg, hours=0, out_dir=tmp_path / "out", log=lambda m: None)
+    return res, fetched
+
+
+def test_pipeline_bodies_only_for_candidates(tmp_path, monkeypatch):
+    res, fetched = _run_full(tmp_path, monkeypatch)
+    assert fetched and len(fetched) <= 6
+    by_id = {a.link: c for c in res["clusters"] for a in c.articles}
+    for a in fetched:
+        c = by_id[a.link]
+        assert not c.release_kind and not c.foreign
+    body_md = res["body_md"].read_text(encoding="utf-8")
+    assert "본문 전문입니다" in body_md
+    md = res["md"].read_text(encoding="utf-8")
+    assert "## 6. 외신 (1건)" in md and "Example Wire" in md
+    assert "발제 후보 기사 본문: 기사본문_" in md
+
+
+def test_html_internal_links_all_resolve(tmp_path, monkeypatch):
+    import re
+    res, _ = _run_full(tmp_path, monkeypatch)
+    h = res["html"].read_text(encoding="utf-8")
+    hrefs = set(re.findall(r"href='#([^']+)'", h))
+    ids = set(re.findall(r"id='([^']+)'", h))
+    assert hrefs and not (hrefs - ids)
+    # 외부 링크는 모두 http(s)
+    ext = re.findall(r"href='([^#'][^']*)'", h)
+    assert ext and all(u.startswith(("http://", "https://")) for u in ext)
+
+
+def test_markdown_links_escape_brackets():
+    from balje.report import _md_link
+    assert _md_link("[단독] 제목", "https://e.com/a(b)") == "[\\[단독\\] 제목](<https://e.com/a(b)>)"

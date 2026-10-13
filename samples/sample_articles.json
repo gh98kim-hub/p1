@@ -131,5 +131,21 @@
     "press": "가상경제",
     "date": "2026-10-13 10:40",
     "description": "나래자동차는 신형 세단을 공식 출시했다고 밝혔다."
+  },
+  {
+    "title": "Acme Motors to build new EV plant in Georgia",
+    "link": "https://example.com/news/20",
+    "press": "Example Wire",
+    "date": "2026-10-13 10:15",
+    "description": "Fictional sample item.",
+    "lang": "en"
+  },
+  {
+    "title": "Acme Motors EV plant plan draws tariff questions",
+    "link": "https://example.com/news/21",
+    "press": "Sample Times",
+    "date": "2026-10-13 11:40",
+    "description": "Fictional sample item.",
+    "lang": "en"
   }
 ]

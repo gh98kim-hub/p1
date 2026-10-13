@@ -80,6 +80,8 @@ def rule_based_notes(cluster, config, trends=None):
 
     checks = list(dict.fromkeys(checks + GENERIC_CHECKS))
     status = []
+    if cluster.foreign:
+        status.append("외신")
     if cluster.exclusive:
         status.append("타사 단독")
     if cluster.release_kind:
@@ -105,6 +107,7 @@ SYSTEM_PROMPT = """너는 경제지 자동차 담당 기자의 아침 발제를 
 - 근거가 되는 자료 번호(예: [A003], [M1])를 문장 끝에 붙인다.
 - 다른 매체 기사 문장을 그대로 옮기지 않는다. 요지를 새로 정리한다.
 - 새 시각을 제안할 때는 '무엇을 확인하면 기사가 되는지'로 쓴다. 확인 전 내용을 사실처럼 쓰지 않는다.
+- '외신' 표시 이슈는 영문 기사다. 국내 발제의 배경·후속 소재로 쓰고, 인용할 때는 매체명을 밝힌다.
 - 문체는 연합뉴스처럼 직관적이고 건조하게. 과장·수사·감탄 표현 금지.
 - 부장에게 올리는 발제처럼 핵심부터, 짧고 단정하게 쓴다.
 
@@ -134,7 +137,7 @@ USER_TEMPLATE = """아래 자료로 세 가지를 써라.
 - 살릴 앵글: (있으면 1~2개. 무엇을 더 확인하면 기사가 되는지)
 
 # 3. 틀어보기
-이미 여러 매체가 보도한 이슈(매체 3곳 이상) 중 3개를 골라 각각:
+이미 여러 매체가 보도한 이슈(매체 3곳 이상) 중 3개를 골라 각각(외신에서 국내 시각으로 풀 소재가 있으면 함께):
 ## 이슈 번호 · 한 줄 요약
 - 이미 나온 시각: (기존 기사들이 공통으로 다룬 내용)
 - 새 시각: (2~3개. 같은 소재를 다르게 볼 방법)
@@ -147,9 +150,11 @@ USER_TEMPLATE = """아래 자료로 세 가지를 써라.
 """
 
 
-def build_materials_text(clusters, materials, notes, max_clusters, trends=()):
+def build_materials_text(clusters, materials, notes, max_clusters, trends=(), max_foreign=6, body_chars=1500):
     lines = []
-    for c in clusters[:max_clusters]:
+    domestic = [c for c in clusters if not c.foreign][:max_clusters]
+    foreign = sorted((c for c in clusters if c.foreign), key=lambda c: -c.score)[:max_foreign]
+    for c in domestic + foreign:
         n = notes[c.id]
         lines.append(f"### 이슈 {c.id} (점수 {c.score} / {', '.join(n['status'])} / 매체 {len(c.press)}곳)")
         if c.angles:
@@ -166,6 +171,9 @@ def build_materials_text(clusters, materials, notes, max_clusters, trends=()):
             lines.append(f"[{a.id}] {a.press} | {when} | {a.title}")
             if a.description:
                 lines.append(f"    요약: {a.description}")
+            if a.body:
+                body = " ".join(a.body.split())
+                lines.append(f"    본문: {body[:body_chars]}{'…' if len(body) > body_chars else ''}")
         if len(c.articles) > 8:
             lines.append(f"    (외 {len(c.articles) - 8}건)")
         lines.append("")

@@ -1,18 +1,19 @@
-"""발제 노트 출력(마크다운·HTML)."""
+"""발제 노트 출력(마크다운·HTML). 두 형식 모두 같은 구성으로 쓴다.
+
+1 발제 후보 · 2 AI 발제안 · 3 보도자료 점검 · 4 묶음 기획 소재 · 5 앵글 바꾸기 · 6 외신
+· 7 브랜드별 기사량 · 8 전체 이슈 목록
+"""
 
 import html
 import re
 from datetime import timedelta, timezone
 
 KST = timezone(timedelta(hours=9))
+SORT_LABEL = {"latest": "최신순(가장 최근 기사 기준)", "score": "점수순"}
 
 
 def _t(dt, fmt="%m-%d %H:%M"):
     return dt.astimezone(KST).strftime(fmt) if dt else "-"
-
-
-def _release_rows(clusters, notes):
-    return [(c, notes[c.id]["release"]) for c in clusters if notes[c.id]["release"]]
 
 
 def _ai_items(ai_text):
@@ -23,86 +24,202 @@ def _ai_items(ai_text):
     return list(ai_text.items())
 
 
+def build_sections(clusters, notes, top=10):
+    """clusters는 화면 정렬 순서. 발제 후보는 점수 상위 top개를 골라 화면 순서대로 보여준다."""
+    domestic = [c for c in clusters if not c.foreign]
+    foreign = [c for c in clusters if c.foreign]
+    pool = [c for c in domestic if not notes[c.id]["release"]]
+    best = {c.id for c in sorted(pool, key=lambda c: -c.score)[:top]}
+    candidates = [c for c in pool if c.id in best]
+    releases = [c for c in domestic if notes[c.id]["release"]]
+    angle_items = [c for c in pool if c.id in best or len(c.press) >= 2]
+    return {"domestic": domestic, "foreign": foreign, "candidates": candidates,
+            "releases": releases, "angles": angle_items}
+
+
+def anchors(sec):
+    """이슈별로 실제 존재하는 링크 대상(상세가 있으면 상세, 없으면 전체 목록의 행)."""
+    out = {}
+    for c in sec["domestic"]:
+        out[c.id] = f"row-{c.id}"
+    for c in sec["releases"]:
+        out[c.id] = f"r-{c.id}"
+    for c in sec["candidates"]:
+        out[c.id] = f"d-{c.id}"
+    for c in sec["foreign"]:
+        out[c.id] = f"f-{c.id}"
+    return out
+
+
 # ---------------------------------------------------------------- 마크다운
+
+def _md_text(text):
+    """마크다운 링크 글자 안의 대괄호를 이스케이프한다([단독] 등)."""
+    return text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def _md_link(text, url):
+    if not url:
+        return _md_text(text)
+    return f"[{_md_text(text)}](<{url}>)"
+
+
+def _md_article(a):
+    line = f"{_t(a.published)} {a.press} · {_md_link(a.title, a.link)}"
+    if a.naver_link and a.naver_link != a.link:
+        line += f" · {_md_link('네이버', a.naver_link)}"
+    return line
+
+
+def _md_status(c, notes):
+    n = notes[c.id]
+    parts = [", ".join(n["status"])]
+    if c.angles:
+        parts.append("분류 " + ", ".join(c.angles))
+    if c.brands:
+        parts.append("브랜드 " + ", ".join(c.brands))
+    return " · ".join(parts)
+
 
 def to_markdown(clusters, notes, generated_at, ai_text=None, top=10, meta=None):
     meta = meta or {}
+    sec = build_sections(clusters, notes, top)
+    n_foreign = sum(len(c.articles) for c in sec["foreign"])
     out = [f"# 발제 노트 {_t(generated_at, '%Y-%m-%d %H:%M')}", ""]
-    out.append(f"- 수집 기사 {meta.get('articles', 0)}건 → 이슈 {len(clusters)}개로 묶음")
+    out.append(f"- 수집 기사 {meta.get('articles', 0)}건(국내 {meta.get('articles', 0) - n_foreign} · "
+               f"외신 {n_foreign}) → 이슈 {len(clusters)}개")
     if meta.get("keywords"):
-        line = "- 검색어: " + ", ".join(meta["keywords"])
-        if meta.get("brand_search"):
-            line += " + 브랜드 전체"
-        out.append(line)
+        out.append("- 검색어: " + ", ".join(meta["keywords"]) + (" + 브랜드 전체" if meta.get("brand_search") else ""))
     if meta.get("materials"):
         out.append("- 기자 제공 자료: " + ", ".join(meta["materials"]))
-    out += ["", "## 오늘의 이슈 순위", "",
-            "| 순위 | 이슈 | 점수 | 기사 | 매체 | 상태 | 분류 |",
-            "|---|---|---|---|---|---|---|"]
-    for rank, c in enumerate(clusters[:top], 1):
+    out.append(f"- 정렬: {SORT_LABEL.get(meta.get('sort', 'latest'), '최신순')}")
+    if meta.get("body_file"):
+        out.append(f"- 발제 후보 기사 본문: {meta['body_file']}")
+    out += ["", "## 목차", "",
+            "1. 발제 후보", "2. AI 발제안", "3. 보도자료 점검", "4. 묶음 기획 소재",
+            "5. 앵글 바꾸기", "6. 외신", "7. 브랜드별 기사량", "8. 전체 이슈 목록"]
+
+    # 1. 발제 후보
+    out += ["", "---", "", f"## 1. 발제 후보 ({len(sec['candidates'])}개)", "",
+            "> 보도자료성·외신을 뺀 이슈 중 점수 상위. 정렬은 위 기준을 따른다.", ""]
+    for c in sec["candidates"]:
         n = notes[c.id]
-        title = c.headline.replace("|", "/")
-        out.append(f"| {rank} | {c.id} {title} | {c.score} | {len(c.articles)} | {len(c.press)} | "
-                   f"{', '.join(n['status'])} | {', '.join(c.angles) or '-'} |")
-
-    for label, text in _ai_items(ai_text):
-        out += ["", "---", "", f"# {label} 발제안 (초안 · 반드시 확인 후 사용)", "", text]
-
-    trends = meta.get("trends") or []
-    if trends:
-        out += ["", "---", "", "## 묶어보기: 업계 흐름 기획 후보", "",
-                "서로 다른 브랜드에서 같은 유형의 이슈가 나왔다. 하나로 묶으면 흐름 기사가 될 수 있다.", ""]
-        for t in trends:
-            items = "; ".join(f"[{c.id}] {c.headline}" for c in t["clusters"][:5])
-            out.append(f"- **{t['category']}** · {', '.join(t['brands'])} — {items}")
-
-    rel = _release_rows(clusters, notes)
-    if rel:
-        out += ["", "## 보도자료 점검", "",
-                "| 이슈 | 종류 | 판단 | 근거 | 살릴 앵글 |", "|---|---|---|---|---|"]
-        for c, r in rel:
-            out.append(f"| [{c.id}] {c.headline.replace('|', '/')} | {r['kind']} | **{r['verdict']}** | "
-                       f"{' / '.join(r['reasons']) or '-'} | {' / '.join(r['angles'][:3]) or '-'} |")
-
-    brands = meta.get("brands") or []
-    if brands:
-        out += ["", "## 브랜드별 기사량", "", "| 브랜드 | 기사 | 이슈 | 대표 이슈 |", "|---|---|---|---|"]
-        for r in brands[:20]:
-            out.append(f"| {r['brand']} | {r['articles']} | {r['issues']} | [{r['top'].id}] {r['top'].headline} |")
-
-    out += ["", "---", "", "# 이슈별 상세", ""]
-    for rank, c in enumerate(clusters[:top], 1):
-        n = notes[c.id]
-        out.append(f"## {rank}. [{c.id}] {c.headline}")
+        out.append(f"### [{c.id}] {c.headline}")
         out.append("")
-        out.append(f"- 점수 {c.score} ({' · '.join(c.reasons)})")
-        out.append(f"- 키워드: {', '.join(c.keywords) or '-'}")
-        if c.brands:
-            out.append(f"- 브랜드: {', '.join(c.brands)}")
-        out.append(f"- 첫 보도 {_t(c.first_seen)} / 최근 {_t(c.latest)}")
-        out.append(f"- 보도 매체: {', '.join(c.press) or '-'}")
+        out.append(f"- 최근 {_t(c.latest)} · 첫 보도 {_t(c.first_seen)} · 점수 {c.score} ({' · '.join(c.reasons)})")
+        out.append(f"- {_md_status(c, notes)}")
+        out.append(f"- 매체 {len(c.press)}곳: {', '.join(c.press) or '-'}")
         if c.numbers:
             out.append(f"- 제목 속 수치: {', '.join(c.numbers)}")
-        if n["release"]:
-            r = n["release"]
-            out.append(f"- 보도자료 판단: **{r['verdict']}** ({r['kind']}; {' / '.join(r['reasons'])})")
-        out.append("- 발제 각도:")
+        out.append("- 발제 각도")
         out += [f"  - {a}" for a in n["angles"]]
-        out.append("- 틀어보기(새 시각):")
+        out.append("- 앵글 바꾸기")
         out += [f"  - {'✓ 이미 다룸' if t['covered'] else '★ 아직 안 나옴'} · {t['view']}" for t in n["twists"]]
-        out.append("- 취재 체크리스트:")
+        out.append("- 취재 체크리스트")
         out += [f"  - [ ] {x}" for x in n["checks"]]
-        out.append("- 근거 기사:")
-        for a in c.articles[:10]:
-            out.append(f"  - [{a.id}] {a.press} {_t(a.published)} [{a.title}]({a.link})")
+        bodies = [a for a in c.articles if a.body]
+        if bodies:
+            first = bodies[0].body.replace("\n", " ")
+            out.append(f"- 본문 수집 {len(bodies)}건 (전문은 본문 파일). 발췌: {first[:200]}{'…' if len(first) > 200 else ''}")
+        out.append("- 기사(최신순)")
+        out += [f"  - {_md_article(a)}" for a in c.articles[:10]]
         if len(c.articles) > 10:
             out.append(f"  - 외 {len(c.articles) - 10}건")
         out.append("")
 
-    rest = clusters[top:]
-    if rest:
-        out += ["## 기타 이슈", ""]
-        out += [f"- [{c.id}] {c.headline} ({len(c.articles)}건, 점수 {c.score})" for c in rest[:40]]
+    # 2. AI
+    out += ["---", "", "## 2. AI 발제안", ""]
+    items = _ai_items(ai_text)
+    if not items:
+        out.append("> AI 발제안을 켜지 않았다.")
+    for label, text in items:
+        out += [f"### {label} (초안 · 반드시 확인 후 사용)", "", text, ""]
+
+    # 3. 보도자료
+    out += ["", "---", "", f"## 3. 보도자료 점검 ({len(sec['releases'])}건)", ""]
+    if not sec["releases"]:
+        out.append("> 보도자료로 보이는 이슈가 없다.")
+    for c in sec["releases"]:
+        r = notes[c.id]["release"]
+        out.append(f"### [{c.id}] {c.headline}")
+        out.append("")
+        out.append(f"- 판단: **{r['verdict']}** ({r['kind']})")
+        out.append(f"- 근거: {' / '.join(r['reasons']) or '-'}")
+        out.append("- 살릴 앵글")
+        out += [f"  - {x}" for x in r["angles"]] or ["  - -"]
+        out.append(f"- 브랜드: {', '.join(c.brands) or '-'} · 최근 {_t(c.latest)}")
+        out.append("- 기사")
+        out += [f"  - {_md_article(a)}" for a in c.articles[:5]]
+        out.append("")
+
+    # 4. 묶음 기획
+    trends = meta.get("trends") or []
+    out += ["---", "", f"## 4. 묶음 기획 소재 ({len(trends)}건)", "",
+            "> 서로 다른 브랜드에서 같은 유형의 이슈가 나왔다. 묶으면 업계 흐름 기사가 될 수 있다.", ""]
+    for t in trends:
+        out.append(f"### {t['category']} — {', '.join(t['brands'])}")
+        out.append("")
+        for c in t["clusters"]:
+            a = c.articles[0]
+            out.append(f"- [{c.id}] {_md_link(c.headline, a.link)} ({a.press} {_t(c.latest)}, 기사 {len(c.articles)}건)")
+        out.append("")
+
+    # 5. 앵글 바꾸기
+    out += ["---", "", f"## 5. 앵글 바꾸기 ({len(sec['angles'])}건)", "",
+            "> 여러 매체가 다룬 이슈와 발제 후보. ★는 기존 기사에 아직 안 보이는 시각.", ""]
+    for c in sec["angles"]:
+        tw = notes[c.id]["twists"]
+        fresh = [t["view"] for t in tw if not t["covered"]]
+        done = [t["view"] for t in tw if t["covered"]]
+        out.append(f"### [{c.id}] {c.headline} (매체 {len(c.press)}곳)")
+        out.append("")
+        out.append("- 이미 다룬 시각: " + (" / ".join(done) or "-"))
+        out += [f"- ★ {v}" for v in fresh]
+        out.append("")
+
+    # 6. 외신
+    out += ["---", "", f"## 6. 외신 ({len(sec['foreign'])}건)", ""]
+    if not sec["foreign"]:
+        out.append("> 외신 수집을 끄거나 결과가 없다.")
+    for c in sec["foreign"]:
+        out.append(f"### {c.headline}")
+        out.append("")
+        if c.brands:
+            out.append(f"- 브랜드: {', '.join(c.brands)}")
+        out += [f"- {_md_article(a)}" for a in c.articles[:6]]
+        out.append("")
+
+    # 7. 브랜드
+    brands = meta.get("brands") or []
+    out += ["---", "", "## 7. 브랜드별 기사량", "", "| 브랜드 | 기사 | 이슈 | 대표 이슈 |", "|---|---|---|---|"]
+    for r in brands[:30]:
+        out.append(f"| {r['brand']} | {r['articles']} | {r['issues']} | [{r['top'].id}] {r['top'].headline.replace('|', '/')} |")
+
+    # 8. 전체
+    out += ["", "---", "", f"## 8. 전체 이슈 목록 ({len(sec['domestic'])}개)", "",
+            "| 최근 | 이슈 | 점수 | 기사 | 매체 | 상태 |", "|---|---|---|---|---|---|"]
+    for c in sec["domestic"]:
+        title = _md_link(c.headline, c.articles[0].link).replace("|", "/")
+        out.append(f"| {_t(c.latest)} | [{c.id}] {title} | {c.score} | {len(c.articles)} | {len(c.press)} | "
+                   f"{', '.join(notes[c.id]['status'])} |")
+    return "\n".join(out) + "\n"
+
+
+def bodies_markdown(clusters, notes, generated_at):
+    out = [f"# 발제 후보 기사 본문 {_t(generated_at, '%Y-%m-%d %H:%M')}", "",
+           "> 발제 참고용으로 모은 원문. 기사에 그대로 옮겨 쓰지 않는다.", ""]
+    for c in clusters:
+        arts = [a for a in c.articles if a.body]
+        if not arts:
+            continue
+        out += [f"## [{c.id}] {c.headline}", ""]
+        for a in arts:
+            out.append(f"### {a.press} {_t(a.published)} · {_md_text(a.title)}")
+            out.append("")
+            out.append(f"- 링크: <{a.link}>" + (f" · 네이버: <{a.naver_link}>" if a.naver_link else ""))
+            out.append("")
+            out.append(a.body)
+            out.append("")
     return "\n".join(out) + "\n"
 
 
@@ -140,6 +257,10 @@ th, td { border-bottom:1px solid var(--line); padding:6px 4px; text-align:left; 
 .verdict { font-weight:700; color:var(--warn); min-width:5.5em; }
 td:first-child { min-width:2em; }
 ul { padding-left:20px; margin:4px 0; }
+.nowrap { white-space:nowrap; }
+details { margin:6px 0; } summary { cursor:pointer; color:var(--accent); font-size:14px; }
+.body { white-space:pre-wrap; font-size:14px; background:var(--bg); border:1px solid var(--line);
+  border-radius:6px; padding:10px 12px; margin-top:6px; }
 """
 
 
@@ -178,13 +299,27 @@ def _md_block(md):
     return "\n".join(out)
 
 
+def _h_article(a):
+    e = html.escape
+    extra = ""
+    if a.naver_link and a.naver_link != a.link:
+        extra = f" · <a href='{e(a.naver_link)}' target='_blank' rel='noopener'>네이버</a>"
+    return (f"<li><span class='muted'>{_t(a.published)} {e(a.press)}</span> "
+            f"<a href='{e(a.link)}' target='_blank' rel='noopener'>{e(a.title)}</a>{extra}</li>")
+
+
 def to_html(clusters, notes, generated_at, ai_text=None, top=10, meta=None):
     meta = meta or {}
     e = html.escape
+    sec = build_sections(clusters, notes, top)
+    anc = anchors(sec)
     ai_items = _ai_items(ai_text)
     trends = meta.get("trends") or []
-    rel = _release_rows(clusters, notes)
     brands = meta.get("brands") or []
+    n_foreign = sum(len(c.articles) for c in sec["foreign"])
+
+    def ilink(c, text=None):
+        return f"<a href='#{anc[c.id]}'>{e(text or c.headline)}</a>"
 
     kw = ""
     if meta.get("keywords"):
@@ -194,93 +329,110 @@ def to_html(clusters, notes, generated_at, ai_text=None, top=10, meta=None):
          f"<title>발제 노트 {_t(generated_at, '%m-%d')}</title><style>{_CSS}</style></head><body>",
          f"<main class='{'wide' if len(ai_items) > 1 else ''}'>",
          f"<h1>발제 노트 {_t(generated_at, '%Y-%m-%d %H:%M')}</h1>",
-         f"<p class='meta'>수집 기사 {meta.get('articles', 0)}건 → 이슈 {len(clusters)}개{kw}"
+         f"<p class='meta'>수집 기사 {meta.get('articles', 0)}건(외신 {n_foreign}) → 이슈 {len(clusters)}개{kw}"
          + (f" · 기자 제공 자료 {e(', '.join(meta['materials']))}" if meta.get("materials") else "")
-         + "</p>"]
-    nav = [("rank", "이슈 순위")]
-    if ai_items:
-        nav.append(("ai", "AI 발제안"))
-    if trends:
-        nav.append(("trends", "묶어보기"))
-    if rel:
-        nav.append(("release", "보도자료 점검"))
-    if brands:
-        nav.append(("brands", "브랜드별"))
-    nav.append(("detail", "이슈별 상세"))
+         + f" · 정렬 {SORT_LABEL.get(meta.get('sort', 'latest'), '')}"
+         + (f" · 본문 파일 {e(meta['body_file'])}" if meta.get("body_file") else "") + "</p>"]
+    nav = [("s1", f"발제 후보 {len(sec['candidates'])}"), ("s2", "AI 발제안"),
+           ("s3", f"보도자료 {len(sec['releases'])}"), ("s4", f"묶음 기획 {len(trends)}"),
+           ("s5", "앵글 바꾸기"), ("s6", f"외신 {len(sec['foreign'])}"), ("s7", "브랜드별"), ("s8", "전체 목록")]
     h.append("<nav>" + "".join(f"<a href='#{k}'>{v}</a>" for k, v in nav) + "</nav>")
 
-    h += ["<h2 id='rank'>오늘의 이슈 순위</h2><div class='wrap'><table>",
-          "<tr><th>#</th><th>이슈</th><th>점수</th><th>기사</th><th>매체</th><th>상태</th></tr>"]
-    for rank, c in enumerate(clusters[:top], 1):
+    # 1. 발제 후보
+    h.append(f"<h2 id='s1'>1. 발제 후보</h2><p class='muted'>보도자료성·외신을 뺀 점수 상위 {top}개</p>")
+    for c in sec["candidates"]:
         n = notes[c.id]
-        h.append(f"<tr><td>{rank}</td><td><a href='#{c.id}'>{e(c.headline)}</a>"
-                 f"<div class='muted'>{e(', '.join(c.angles + c.brands[:3]))}</div></td><td>{c.score}</td>"
-                 f"<td>{len(c.articles)}</td><td>{len(c.press)}</td><td>{e(', '.join(n['status']))}</td></tr>")
-    h.append("</table></div>")
+        h.append(f"<div class='card' id='d-{c.id}'><h3>[{c.id}] {e(c.headline)}</h3>")
+        h.append("<div>" + "".join(f"<span class='chip'>{e(x)}</span>"
+                                   for x in n["status"] + c.angles + c.brands) + "</div>")
+        h.append(f"<p class='meta'>최근 {_t(c.latest)} · 첫 보도 {_t(c.first_seen)} · 점수 {c.score} "
+                 f"({e(' · '.join(c.reasons))})<br>매체 {len(c.press)}곳: {e(', '.join(c.press) or '-')}"
+                 + (f"<br>제목 속 수치: {e(', '.join(c.numbers))}" if c.numbers else "") + "</p>")
+        h.append("<b>발제 각도</b><ul>" + "".join(f"<li>{e(a)}</li>" for a in n["angles"]) + "</ul>")
+        h.append("<b>앵글 바꾸기</b><ul>" + "".join(
+            f"<li class='{'done' if t['covered'] else 'fresh'}'>"
+            f"{'이미 다룸' if t['covered'] else '아직 안 나옴'} · {e(t['view'])}</li>" for t in n["twists"]) + "</ul>")
+        h.append("<b>취재 체크리스트</b><ul>" + "".join(f"<li>☐ {e(x)}</li>" for x in n["checks"]) + "</ul>")
+        h.append("<b>기사(최신순)</b><ul>" + "".join(_h_article(a) for a in c.articles[:10]) + "</ul>")
+        for a in [a for a in c.articles if a.body]:
+            h.append(f"<details><summary>본문 · {e(a.press)} {e(a.title)}</summary>"
+                     f"<div class='body'>{e(a.body)}</div></details>")
+        h.append("</div>")
 
-    if ai_items:
-        h.append("<h2 id='ai'>AI 발제안 <span class='muted'>(초안 · 반드시 확인 후 사용)</span></h2>")
+    # 2. AI
+    h.append("<h2 id='s2'>2. AI 발제안 <span class='muted'>(초안 · 반드시 확인 후 사용)</span></h2>")
+    if not ai_items:
+        h.append("<p class='muted'>AI 발제안을 켜지 않았다.</p>")
+    else:
         h.append(f"<div class='cols {'two' if len(ai_items) > 1 else ''}'>")
         for label, text in ai_items:
             h.append(f"<div class='ai'><h2>{e(label)}</h2>{_md_block(text)}</div>")
         h.append("</div>")
 
-    if trends:
-        h.append("<h2 id='trends'>묶어보기: 업계 흐름 기획 후보</h2>"
-                 "<p class='muted'>서로 다른 브랜드에서 같은 유형의 이슈가 나왔다. 하나로 묶으면 흐름 기사가 될 수 있다.</p><ul>")
-        for t in trends:
-            items = "; ".join(f"<a href='#{c.id}'>{e(c.headline)}</a>" for c in t["clusters"][:5])
-            h.append(f"<li><b>{e(t['category'])}</b> · {e(', '.join(t['brands']))}<br>{items}</li>")
-        h.append("</ul>")
+    # 3. 보도자료
+    h.append("<h2 id='s3'>3. 보도자료 점검</h2>")
+    if not sec["releases"]:
+        h.append("<p class='muted'>보도자료로 보이는 이슈가 없다.</p>")
+    for c in sec["releases"]:
+        r = notes[c.id]["release"]
+        h.append(f"<div class='card' id='r-{c.id}'><h3>[{c.id}] {e(c.headline)}</h3>"
+                 f"<p><span class='verdict'>{e(r['verdict'])}</span> <span class='chip'>{e(r['kind'])}</span>"
+                 + "".join(f"<span class='chip'>{e(b)}</span>" for b in c.brands) + "</p>"
+                 f"<p class='meta'>{'<br>'.join(e(x) for x in r['reasons']) or '-'}</p>"
+                 "<b>살릴 앵글</b><ul>" + ("".join(f"<li>{e(x)}</li>" for x in r["angles"]) or "<li>-</li>") + "</ul>"
+                 "<b>기사</b><ul>" + "".join(_h_article(a) for a in c.articles[:5]) + "</ul></div>")
 
-    if rel:
-        h += ["<h2 id='release'>보도자료 점검</h2><div class='wrap'><table>",
-              "<tr><th>이슈</th><th>판단</th><th>근거</th><th>살릴 앵글</th></tr>"]
-        for c, r in rel:
-            h.append(f"<tr><td><a href='#{c.id}'>{e(c.headline)}</a><div class='muted'>{e(r['kind'])}</div></td>"
-                     f"<td class='verdict'>{e(r['verdict'])}</td>"
-                     f"<td class='muted'>{'<br>'.join(e(x) for x in r['reasons']) or '-'}</td>"
-                     f"<td>{'<br>'.join(e(x) for x in r['angles'][:3]) or '-'}</td></tr>")
-        h.append("</table></div>")
-
-    if brands:
-        h += ["<h2 id='brands'>브랜드별 기사량</h2><div class='wrap'><table>",
-              "<tr><th>브랜드</th><th>기사</th><th>이슈</th><th>대표 이슈</th></tr>"]
-        for r in brands[:20]:
-            h.append(f"<tr><td>{e(r['brand'])}</td><td>{r['articles']}</td><td>{r['issues']}</td>"
-                     f"<td><a href='#{r['top'].id}'>{e(r['top'].headline)}</a></td></tr>")
-        h.append("</table></div>")
-
-    h.append("<h2 id='detail'>이슈별 상세</h2>")
-    for rank, c in enumerate(clusters[:top], 1):
-        n = notes[c.id]
-        h.append(f"<div class='card' id='{c.id}'><h3>{rank}. {e(c.headline)}</h3>")
-        h.append("<div>" + "".join(f"<span class='chip'>{e(s)}</span>"
-                                   for s in n["status"] + c.angles + c.brands) + "</div>")
-        h.append(f"<p class='meta'>점수 {c.score} · {e(' · '.join(c.reasons))}<br>"
-                 f"키워드 {e(', '.join(c.keywords) or '-')} · 첫 보도 {_t(c.first_seen)} · 최근 {_t(c.latest)}<br>"
-                 f"매체 {e(', '.join(c.press) or '-')}</p>")
-        if n["release"]:
-            r = n["release"]
-            h.append(f"<p><b>보도자료 판단</b> <span class='verdict'>{e(r['verdict'])}</span> "
-                     f"<span class='muted'>({e(' / '.join(r['reasons']))})</span></p>")
-        h.append("<b>발제 각도</b><ul>" + "".join(f"<li>{e(a)}</li>" for a in n["angles"]) + "</ul>")
-        h.append("<b>틀어보기(새 시각)</b><ul>" + "".join(
-            f"<li class='{'done' if t['covered'] else 'fresh'}'>"
-            f"{'이미 다룸' if t['covered'] else '아직 안 나옴'} · {e(t['view'])}</li>" for t in n["twists"]) + "</ul>")
-        h.append("<b>취재 체크리스트</b><ul>" + "".join(f"<li>☐ {e(x)}</li>" for x in n["checks"]) + "</ul>")
-        h.append("<b>근거 기사</b><ul>")
-        for a in c.articles[:10]:
-            h.append(f"<li><span class='muted'>[{a.id}] {e(a.press)} {_t(a.published)}</span> "
-                     f"<a href='{e(a.link)}' target='_blank' rel='noopener'>{e(a.title)}</a></li>")
-        if len(c.articles) > 10:
-            h.append(f"<li class='muted'>외 {len(c.articles) - 10}건</li>")
+    # 4. 묶음 기획
+    h.append("<h2 id='s4'>4. 묶음 기획 소재</h2><p class='muted'>서로 다른 브랜드에서 같은 유형의 이슈가 나왔다. "
+             "묶으면 업계 흐름 기사가 될 수 있다.</p>")
+    if not trends:
+        h.append("<p class='muted'>해당 없음.</p>")
+    for t in trends:
+        h.append(f"<div class='card'><h3>{e(t['category'])} — {e(', '.join(t['brands']))}</h3><ul>")
+        for c in t["clusters"]:
+            h.append(f"<li>{ilink(c)} <span class='muted'>{e(c.articles[0].press)} {_t(c.latest)} · "
+                     f"기사 {len(c.articles)}건</span></li>")
         h.append("</ul></div>")
 
-    rest = clusters[top:]
-    if rest:
-        h.append("<h2>기타 이슈</h2><ul>")
-        h += [f"<li>{e(c.headline)} <span class='muted'>({len(c.articles)}건)</span></li>" for c in rest[:40]]
-        h.append("</ul>")
+    # 5. 앵글 바꾸기
+    h.append("<h2 id='s5'>5. 앵글 바꾸기</h2><p class='muted'>여러 매체가 다룬 이슈와 발제 후보. "
+             "초록색은 기존 기사에 아직 안 보이는 시각.</p><div class='wrap'><table>"
+             "<tr><th>이슈</th><th>이미 다룬 시각</th><th>새 시각</th></tr>")
+    for c in sec["angles"]:
+        tw = notes[c.id]["twists"]
+        h.append(f"<tr><td>{ilink(c)}<div class='muted'>매체 {len(c.press)}곳</div></td>"
+                 f"<td class='muted'>{'<br>'.join(e(t['view']) for t in tw if t['covered']) or '-'}</td>"
+                 f"<td class='fresh'>{'<br>'.join(e(t['view']) for t in tw if not t['covered']) or '-'}</td></tr>")
+    h.append("</table></div>")
+
+    # 6. 외신
+    h.append("<h2 id='s6'>6. 외신</h2>")
+    if not sec["foreign"]:
+        h.append("<p class='muted'>외신 수집을 끄거나 결과가 없다.</p>")
+    for c in sec["foreign"]:
+        h.append(f"<div class='card' id='f-{c.id}' lang='en'><h3>{e(c.headline)}</h3>"
+                 + ("".join(f"<span class='chip'>{e(b)}</span>" for b in c.brands))
+                 + "<ul>" + "".join(_h_article(a) for a in c.articles[:6]) + "</ul></div>")
+
+    # 7. 브랜드
+    h += ["<h2 id='s7'>7. 브랜드별 기사량</h2><div class='wrap'><table>",
+          "<tr><th>브랜드</th><th>기사</th><th>이슈</th><th>대표 이슈</th></tr>"]
+    for r in brands[:30]:
+        h.append(f"<tr><td>{e(r['brand'])}</td><td>{r['articles']}</td><td>{r['issues']}</td>"
+                 f"<td>{ilink(r['top'])}</td></tr>")
+    h.append("</table></div>")
+
+    # 8. 전체
+    h += [f"<h2 id='s8'>8. 전체 이슈 목록 <span class='muted'>({len(sec['domestic'])}개)</span></h2>",
+          "<div class='wrap'><table><tr><th>최근</th><th>이슈</th><th>점수</th><th>기사</th><th>상태</th></tr>"]
+    for c in sec["domestic"]:
+        a = c.articles[0]
+        detail = f" <a class='muted' href='#{anc[c.id]}'>상세</a>" if anc[c.id] != f"row-{c.id}" else ""
+        h.append(f"<tr id='row-{c.id}'><td class='nowrap'>{_t(c.latest)}</td>"
+                 f"<td><a href='{e(a.link)}' target='_blank' rel='noopener'>{e(c.headline)}</a>{detail}"
+                 f"<div class='muted'>{e(', '.join(c.angles + c.brands[:3]))}</div></td>"
+                 f"<td>{c.score}</td><td>{len(c.articles)}/{len(c.press)}곳</td>"
+                 f"<td>{e(', '.join(notes[c.id]['status']))}</td></tr>")
+    h.append("</table></div>")
     h.append("</main></body></html>")
     return "\n".join(h)

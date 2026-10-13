@@ -17,6 +17,11 @@ _STOP = {
     "것으로", "밝혔다", "전했다", "나섰다", "있다", "없다", "했다", "한다", "이후", "이상",
     "최근", "업계", "국내", "글로벌", "시장", "기업", "회사",
 }
+_STOP_EN = {
+    "THE", "AND", "FOR", "WITH", "FROM", "THAT", "THIS", "ARE", "WAS", "HAS", "HAVE", "WILL", "ITS",
+    "INTO", "OVER", "AFTER", "AMID", "NEW", "SAYS", "SAID", "NEWS", "REPORT", "AS", "AT", "BY", "IN",
+    "OF", "ON", "TO", "IS", "IT", "AN", "OR", "BE", "US", "UP",
+}
 _NUMBER = re.compile(
     r"\d[\d,.]*[조억만천]*(?:\d[\d,.]*[조억만천]+)*(?:%|원|달러|대|배|건|명|개|위)?")
 
@@ -43,7 +48,10 @@ def tokenize(text):
                     break
         if len(tok) < 2 or tok in _STOP or tok.isdigit():
             continue
-        tokens.append(tok.upper() if tok.isascii() else tok)
+        tok = tok.upper() if tok.isascii() else tok
+        if tok in _STOP_EN:
+            continue
+        tokens.append(tok)
     return tokens
 
 
@@ -75,6 +83,8 @@ class Cluster:
     angles: list = field(default_factory=list)
     release_kind: str = ""          # "홍보성" / "사업 발표" / "" (보도자료성 아님)
     release_signals: list = field(default_factory=list)
+    rep: object = None              # 대표 기사(제목에 쓰는 기사)
+    foreign: bool = False           # 외신 이슈
     first_seen: datetime | None = None
     latest: datetime | None = None
     recent_count: int = 0
@@ -86,7 +96,7 @@ class Cluster:
     @property
     def headline(self):
         """대표 제목: 묶음 안에서 공통 토큰을 가장 많이 가진 기사의 제목(말머리 제외)."""
-        return strip_brackets(self.articles[0].title)[0]
+        return strip_brackets((self.rep or self.articles[0]).title)[0]
 
 
 def dedupe(articles):
@@ -107,6 +117,18 @@ def filter_recent(articles, hours, now=None):
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(hours=hours)
     return [a for a in articles if a.published is None or a.published >= cutoff]
+
+
+def _published_key(a):
+    return a.published or datetime.min.replace(tzinfo=timezone.utc)
+
+
+def sort_clusters(clusters, mode="latest"):
+    """latest: 가장 최근 기사 시각순(같으면 점수순) / score: 점수순."""
+    if mode == "score":
+        return sorted(clusters, key=lambda c: -c.score)
+    floor = datetime.min.replace(tzinfo=timezone.utc)
+    return sorted(clusters, key=lambda c: (c.latest or floor, c.score), reverse=True)
 
 
 def cluster_articles(articles, threshold=0.45):
@@ -135,14 +157,19 @@ def cluster_articles(articles, threshold=0.45):
         # 묶음 안에서 공통 토큰을 가장 많이 가진 기사를 대표로 앞에
         g.sort(key=lambda m: -sum(counter[t] for t in set(m["tokens"])))
         keywords = [t for t, c in counter.most_common(6) if c >= 2 or len(g) == 1][:5]
-        clusters.append(Cluster(id=f"I{i:02d}", articles=[m["article"] for m in g], keywords=keywords))
+        rep = g[0]["article"]
+        # 기사 목록은 최신순
+        arts = sorted((m["article"] for m in g), key=_published_key, reverse=True)
+        clusters.append(Cluster(id=f"I{i:02d}", articles=arts, keywords=keywords, rep=rep))
     return clusters
 
 
 def _contains(text, term):
-    # 영문 대문자 약어(MINI, BYD, KGM 등)는 대소문자를 구분해 오탐을 줄인다
-    if term.isascii() and term.isupper():
-        return term in text
+    if term.isascii() and re.search(r"[A-Za-z]", term):
+        # 영문은 단어 단위로(예: Kia가 Nokia에 걸리지 않게).
+        # 대문자 약어(MINI, BYD, KGM 등)는 대소문자까지 구분한다.
+        flags = 0 if term.isupper() else re.I
+        return re.search(r"(?<![A-Za-z])" + re.escape(term) + r"(?![A-Za-z])", text, flags) is not None
     return term.lower() in text.lower()
 
 
@@ -213,7 +240,8 @@ def enrich(clusters, config, history=None, now=None):
         c.angles = [name for name, spec in config.get("angles", {}).items()
                     if any(_contains(text, t) for t in spec.get("terms", []))]
         c.my_press_covered = bool(my_press) and any(my_press in (a.press or "") for a in c.articles)
-        c.release_kind, c.release_signals = detect_release(c, text, config)
+        c.foreign = all(a.lang == "en" for a in c.articles)
+        c.release_kind, c.release_signals = ("", []) if c.foreign else detect_release(c, text, config)
         seen = sum(1 for a in c.articles if a.link in history)
         c.is_new = seen < max(1, len(c.articles) / 2)
         score_cluster(c)

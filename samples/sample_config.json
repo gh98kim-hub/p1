@@ -50,6 +50,19 @@
       "aliases": [
         "나래자동차"
       ]
+    },
+    {
+      "name": "Acme Motors",
+      "query": "Acme Motors",
+      "aliases": [
+        "Acme Motors"
+      ]
     }
-  ]
+  ],
+  "foreign": {
+    "enabled": false
+  },
+  "bodies": {
+    "enabled": false
+  }
 }

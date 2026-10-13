@@ -1,4 +1,4 @@
-"""기사 수집: 네이버 뉴스 검색 API, 외부 파일(모니터링 프로그램 결과), 취재 자료 폴더."""
+"""기사 수집: 네이버 뉴스 검색 API, 외신(구글 뉴스 RSS), 기사 본문, 외부 파일, 취재 자료 폴더."""
 
 import csv
 import html
@@ -7,12 +7,17 @@ import os
 import re
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
+from html.parser import HTMLParser
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
 NAVER_URL = "https://openapi.naver.com/v1/search/news.json"
+GOOGLE_NEWS_URL = "https://news.google.com/rss/search"
+USER_AGENT = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/140.0 Safari/537.36")
 
 PRESS_BY_DOMAIN = {
     "yna.co.kr": "연합뉴스", "hankyung.com": "한국경제", "mk.co.kr": "매일경제",
@@ -41,6 +46,9 @@ class Article:
     source: str = "naver"
     id: str = ""
     tags: list = field(default_factory=list)
+    naver_link: str = ""   # 네이버 뉴스 페이지(있으면 본문 수집에 우선 사용)
+    lang: str = "ko"       # "en"이면 외신
+    body: str = ""         # 수집한 본문(발제 후보만)
 
     def to_dict(self):
         d = asdict(self)
@@ -52,6 +60,18 @@ def clean_text(text):
     """네이버 API 결과의 <b> 태그와 HTML 엔티티를 걷어낸다."""
     text = re.sub(r"<[^>]+>", "", text or "")
     return re.sub(r"\s+", " ", html.unescape(text)).strip()
+
+
+def normalize_link(url):
+    """스킴이 빠진 링크(www.… 또는 //…)를 열 수 있는 주소로 고친다."""
+    url = (url or "").strip()
+    if not url:
+        return ""
+    if url.startswith("//"):
+        return "https:" + url
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", url):
+        return "https://" + url
+    return url
 
 
 def press_from_url(url, extra_map=None):
@@ -118,10 +138,12 @@ def fetch_naver(keyword, pages=1, client_id=None, client_secret=None, press_map=
             data = json.load(resp)
         items = data.get("items", [])
         for item in items:
-            original = item.get("originallink") or item.get("link")
+            original = normalize_link(item.get("originallink") or item.get("link"))
+            naver = item.get("link") or ""
             articles.append(Article(
                 title=clean_text(item.get("title")),
                 link=original,
+                naver_link=naver if "news.naver.com" in naver else "",
                 description=clean_text(item.get("description")),
                 press=press_from_url(original, press_map),
                 published=parse_date(item.get("pubDate")),
@@ -131,6 +153,195 @@ def fetch_naver(keyword, pages=1, client_id=None, client_secret=None, press_map=
         if len(items) < 100:
             break
     return articles
+
+
+# ---------------------------------------------------------------- 외신(구글 뉴스 RSS)
+
+def _http_get(url, timeout=15):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept-Language": "ko,en;q=0.8"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read()
+        charset = resp.headers.get_content_charset()
+    return raw, charset
+
+
+def parse_google_news(xml_bytes, query=""):
+    root = ET.fromstring(xml_bytes)
+    articles = []
+    for item in root.iter("item"):
+        title = clean_text(item.findtext("title"))
+        source_el = item.find("source")
+        press = clean_text(source_el.text) if source_el is not None and source_el.text else ""
+        # 구글 뉴스 제목 끝의 ' - 매체명' 제거
+        if press and title.endswith(" - " + press):
+            title = title[: -len(press) - 3].strip()
+        desc = clean_text(item.findtext("description"))
+        if desc.startswith(title):
+            desc = ""
+        articles.append(Article(
+            title=title,
+            link=normalize_link(item.findtext("link")),
+            description=desc,
+            press=press or "외신",
+            published=parse_date(item.findtext("pubDate")),
+            keyword=query,
+            source="google_news",
+            lang="en",
+        ))
+    return articles
+
+
+def fetch_google_news(query, hl="en-US", gl="US", ceid="US:en"):
+    url = GOOGLE_NEWS_URL + "?" + urllib.parse.urlencode({"q": query, "hl": hl, "gl": gl, "ceid": ceid})
+    raw, _ = _http_get(url)
+    return parse_google_news(raw, query)
+
+
+# ---------------------------------------------------------------- 기사 본문
+
+class _TextGrabber(HTMLParser):
+    """본문 후보 영역의 텍스트를 모은다. 스크립트·스타일·사진설명 등은 건너뛴다.
+
+    실제 기사 HTML은 태그가 제대로 닫히지 않는 경우가 많아, 깊이 대신 '같은 이름 태그'의
+    열고 닫힘만 세어 영역의 끝을 찾는다.
+    """
+
+    SKIP = {"script", "style", "noscript", "iframe", "figure", "figcaption", "button", "aside", "nav",
+            "footer", "em"}
+    BODY_IDS = ("dic_area", "newsct_article", "articleBodyContents", "articeBody", "articleBody",
+                "article-view-content-div", "article_body", "news_body_area", "CmAdContent")
+    BODY_CLASSES = ("article_body", "article-body", "news_body", "story-news", "view_cont", "article_txt")
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.target_tag, self.target_n, self.target_done = None, 0, False
+        self.skip_tag, self.skip_n = None, 0
+        self.target, self.paragraphs, self.article_text = [], [], []
+        self._p = None
+        self.in_article = 0
+
+    def _in_target(self):
+        return self.target_tag is not None and not self.target_done
+
+    def handle_starttag(self, tag, attrs):
+        a = dict(attrs)
+        if tag == "br":
+            if self._in_target():
+                self.target.append("\n")
+            return
+        if self.skip_tag is None and tag in self.SKIP and not (tag == "em" and "img_desc" not in (a.get("class") or "")):
+            self.skip_tag, self.skip_n = tag, 0
+        if self.skip_tag == tag:
+            self.skip_n += 1
+        if self.target_tag is None:
+            ident = a.get("id") or ""
+            cls = (a.get("class") or "").split()
+            if ident in self.BODY_IDS or any(c in cls for c in self.BODY_CLASSES) \
+                    or a.get("itemprop") == "articleBody":
+                self.target_tag, self.target_n = tag, 0
+        if self._in_target():
+            if tag == self.target_tag:
+                self.target_n += 1
+            if tag in ("p", "div"):
+                self.target.append("\n")
+        if tag == "article":
+            self.in_article += 1
+        if tag == "p":
+            self._p = []
+
+    def handle_startendtag(self, tag, attrs):
+        if tag == "br" and self._in_target():
+            self.target.append("\n")
+
+    def handle_endtag(self, tag):
+        if tag == "p" and self._p is not None:
+            text = " ".join("".join(self._p).split())
+            if text:
+                self.paragraphs.append(text)
+            self._p = None
+        if tag == "article" and self.in_article:
+            self.in_article -= 1
+        if self.skip_tag == tag:
+            self.skip_n -= 1
+            if self.skip_n <= 0:
+                self.skip_tag = None
+        if self._in_target() and tag == self.target_tag:
+            self.target_n -= 1
+            if self.target_n <= 0:
+                self.target_done = True  # 첫 본문 영역만 사용
+        if self._in_target() and tag in ("p", "div"):
+            self.target.append("\n")
+
+    def handle_data(self, data):
+        if self.skip_tag is not None:
+            return
+        if self._in_target():
+            self.target.append(data)
+        if self._p is not None:
+            self._p.append(data)
+        if self.in_article:
+            self.article_text.append(data)
+
+
+def _tidy(text):
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    out, blank = [], False
+    for line in lines:
+        if not line:
+            blank = bool(out)
+            continue
+        if blank:
+            out.append("")
+        out.append(line)
+        blank = False
+    return "\n".join(out).strip()
+
+
+def extract_body(html_text, max_chars=6000):
+    """기사 HTML에서 본문만 뽑는다. 네이버 뉴스(dic_area)·주요 언론사 본문 영역 → <p> 묶음 순."""
+    g = _TextGrabber()
+    try:
+        g.feed(html_text)
+        g.close()
+    except Exception:  # 깨진 HTML도 가능한 만큼만
+        pass
+    text = _tidy("".join(g.target))
+    if len(text) < 80:
+        paras = [p for p in g.paragraphs if len(p) >= 30]
+        text = "\n\n".join(paras)
+    if len(text) < 80:
+        text = _tidy("".join(g.article_text))
+    if len(text) < 80:
+        return ""
+    return text[:max_chars] + ("…" if len(text) > max_chars else "")
+
+
+def _decode(raw, charset):
+    if not charset:
+        m = re.search(rb'charset=["\']?([A-Za-z0-9_-]+)', raw[:3000])
+        charset = m.group(1).decode() if m else "utf-8"
+    charset = charset.lower()
+    if charset in ("euc-kr", "ks_c_5601-1987", "ksc5601"):
+        charset = "cp949"
+    try:
+        return raw.decode(charset, errors="replace")
+    except LookupError:
+        return raw.decode("utf-8", errors="replace")
+
+
+def fetch_body(article, max_chars=6000):
+    """기사 본문을 가져온다. 네이버 뉴스 링크가 있으면 그것을 먼저 쓴다. 실패하면 빈 문자열."""
+    for url in (article.naver_link, article.link):
+        if not url or "news.google.com" in url:
+            continue
+        try:
+            raw, charset = _http_get(url)
+        except (OSError, ValueError):
+            continue
+        body = extract_body(_decode(raw, charset), max_chars)
+        if body:
+            return body
+    return ""
 
 
 # ---------------------------------------------------------------- 외부 파일
@@ -170,7 +381,8 @@ def load_articles(path, press_map=None):
         title = clean_text(_pick(row, "title"))
         if not title:
             continue
-        link = _pick(row, "link")
+        link = normalize_link(_pick(row, "link"))
+        naver = normalize_link(row.get("link", "")) if "news.naver.com" in str(row.get("link", "")) else ""
         articles.append(Article(
             title=title,
             link=link,
@@ -179,6 +391,9 @@ def load_articles(path, press_map=None):
             published=parse_date(_pick(row, "published")),
             keyword=_pick(row, "keyword"),
             source=p.name,
+            naver_link=naver,
+            lang=row.get("lang") or ("en" if re.fullmatch(r"[\x00-\x7f]+", title) else "ko"),
+            body=row.get("body", ""),
         ))
     return articles
 
