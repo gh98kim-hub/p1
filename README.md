@@ -2,7 +2,16 @@
 
 자동차 담당 기자의 아침 발제를 돕는 프로그램이다.
 뉴스를 모아 같은 이슈끼리 묶고, 점수를 매기고, 이슈마다 발제 각도와 취재 체크리스트를 붙인다.
-원하면 Claude로 발제안 초안도 쓴다.
+원하면 Claude나 Gemini(또는 둘 다)로 발제안 초안도 쓴다.
+
+발제 노트에 들어가는 것:
+
+- **이슈 순위**: 기사 수·매체 수·브랜드·타사 단독·최근성·수치·신규 여부로 점수화
+- **보도자료 점검**: 보도자료로 보이는 이슈(홍보성/사업 발표)마다 발제 가치 판단(앵글 검토 가치 있음·묶음 기획 소재·단신·생략)과 살릴 앵글
+- **묶어보기**: 서로 다른 브랜드의 같은 유형 이슈(할인·캠페인, 신차 등)를 묶은 업계 흐름 기획 후보
+- **틀어보기**: 이미 나온 기사에 아직 안 보이는 시각(협력사 영향, 소비자 가격, 대당 수익성 등)
+- **브랜드별 기사량**: 국내외 브랜드 30개별 기사·이슈 수
+- **AI 발제안**: 발제안 + 보도자료 점검 + 틀어보기를 AI가 자료 근거로 정리(Claude·Gemini 비교 가능)
 
 ```
 수집(네이버 API 또는 모니터링 결과 파일)
@@ -24,7 +33,9 @@
 5. **[설정]**에 네이버 API 키(필요하면 Claude API 키, 우리 매체 이름)를 넣고 **[발제 노트 만들기]**를 누른다.
    끝나면 브라우저로 발제 노트가 열린다.
 
-창에서 할 수 있는 일: 네이버 검색어·시간 범위 지정, 모니터링 결과 파일 불러오기, 자료 폴더 지정, AI 발제안 켜기.
+창에서 할 수 있는 일: 네이버 검색어·시간 범위 지정, 브랜드 전체 검색 켜고 끄기, 모니터링 결과 파일 불러오기,
+자료 폴더 지정, AI 선택(사용 안 함 / Claude / Gemini / 둘 다 비교).
+[설정]에서 API 키, Gemini 모델, 검색 브랜드 목록을 고친다.
 
 ## 설치(직접 실행할 때)
 
@@ -81,12 +92,18 @@ python -m balje --input 오전.csv --input 오후.csv
 python -m balje --materials 오늘자료 --ai
 ```
 
-### 4) AI 발제안
+### 4) AI 발제안 (Claude · Gemini)
 
 ```bash
-export ANTHROPIC_API_KEY=발급받은_키
-python -m balje --ai
+export ANTHROPIC_API_KEY=발급받은_키   # Claude
+export GEMINI_API_KEY=발급받은_키      # Gemini (Google AI Studio에서 발급)
+python -m balje --ai claude
+python -m balje --ai gemini
+python -m balje --ai both              # 둘 다 써서 나란히 비교
 ```
+
+- Gemini 모델 기본값은 `gemini-pro-latest`(최신 Pro를 가리키는 별칭). 빠르고 저렴한 쪽은 `gemini-3.8-flash`.
+  설정의 `ai.gemini_model`이나 창의 [설정]에서 바꾼다.
 
 - 수집 기사와 기자 제공 자료**만** 근거로 쓰도록 지시한다. 자료에 없는 내용은 '추가 확인 필요'로 돌린다.
 - 모든 문장에 근거 번호(`[A003]` 기사, `[M1]` 기자 자료)를 달게 해 바로 대조할 수 있다.
@@ -101,7 +118,8 @@ python -m balje --ai
 | `--keywords "a,b"` | 검색어 덮어쓰기 |
 | `--hours N` | 최근 N시간 기사만(0이면 전체) |
 | `--materials 폴더` | 기자 제공 자료 폴더 |
-| `--ai` | Claude 발제안 초안 작성 |
+| `--ai [claude\|gemini\|both]` | AI 발제안 초안 작성(값 생략 시 설정 따름) |
+| `--no-brands` | 브랜드 검색어를 쓰지 않음 |
 | `--top N` | 상세 표시할 이슈 수(기본 10) |
 | `--out 폴더` | 출력 폴더(기본 `output/`) |
 | `--save-raw` | 수집 기사 원본 JSON 저장(모니터링 기록용) |
@@ -109,7 +127,11 @@ python -m balje --ai
 
 ## 설정(config.json)
 
-- `keywords`: 네이버 검색어
+- `keywords`: 네이버 검색어(주제)
+- `search_brands` / `brands`: 브랜드 검색 여부와 목록(검색어 `query`, 기사 속 표기 `aliases`)
+- `auto_terms`: 브랜드 검색 결과에서 자동차와 무관한 기사(야구단·인물 등)를 거르는 단어
+- `release_markers` / `release_press`: 보도자료성 판별 단어와 보도자료 배포 매체
+- `generic_twists`, `angles.*.twists`: '틀어보기' 시각 목록(`covered_if` 단어가 기사에 있으면 '이미 다룸')
 - `lookback_hours`: 기본 조회 시간 범위
 - `my_press`: 우리 매체 이름. 이미 쓴 이슈에 '자사 기보도' 표시
 - `watch_terms`: 출입처·관심 기업. 등장하면 점수 가산
@@ -126,7 +148,8 @@ python -m balje --ai
 `samples/`의 기사와 자료는 **가상 예시**다(실제 기업·사실과 무관).
 
 ```bash
-python -m balje --input samples/sample_articles.json --hours 0 --no-history --materials samples/materials
+python -m balje --config samples/sample_config.json --input samples/sample_articles.json \
+  --hours 0 --no-history --materials samples/materials
 ```
 
 ## 테스트

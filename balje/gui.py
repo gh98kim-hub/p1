@@ -1,7 +1,9 @@
 """더블클릭으로 쓰는 창(GUI). exe로 묶을 때의 진입점이기도 하다."""
 
 import os
+import json
 import queue
+import re
 import shutil
 import subprocess
 import sys
@@ -13,9 +15,10 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from . import pipeline
-from .config import load_config, save_config
+from .config import _merge, brands_from_names, load_config, save_config
 
 FONT = ("Malgun Gothic", 10)
+AI_CHOICES = [("사용 안 함", None), ("Claude", "claude"), ("Gemini", "gemini"), ("Claude + Gemini 비교", "both")]
 
 
 def app_dir():
@@ -49,10 +52,13 @@ def open_path(path):
 
 
 class SettingsDialog(tk.Toplevel):
+    # (설정 키, 라벨, 가리기). "ai.xxx"는 ai 항목 아래에 저장한다.
     FIELDS = [
         ("naver_client_id", "네이버 Client ID", False),
         ("naver_client_secret", "네이버 Client Secret", True),
-        ("anthropic_api_key", "Claude API 키 (AI 발제안용)", True),
+        ("anthropic_api_key", "Claude API 키", True),
+        ("gemini_api_key", "Gemini API 키", True),
+        ("ai.gemini_model", "Gemini 모델", False),
         ("my_press", "우리 매체 이름", False),
     ]
 
@@ -61,28 +67,48 @@ class SettingsDialog(tk.Toplevel):
         self.title("설정")
         self.resizable(False, False)
         self.transient(master)
+        self.config_data = config
         self.vars = {}
         frm = ttk.Frame(self, padding=14)
         frm.pack(fill="both", expand=True)
         for row, (key, label, secret) in enumerate(self.FIELDS):
             ttk.Label(frm, text=label).grid(row=row, column=0, sticky="w", pady=4)
-            var = tk.StringVar(value=config.get(key, ""))
-            ttk.Entry(frm, textvariable=var, width=42, show="•" if secret else "").grid(
+            var = tk.StringVar(value=self._get(key))
+            ttk.Entry(frm, textvariable=var, width=46, show="•" if secret else "").grid(
                 row=row, column=1, sticky="we", padx=(8, 0), pady=4)
             self.vars[key] = var
-        ttk.Label(frm, foreground="#666",
-                  text="키는 이 프로그램 폴더의 config.json에 저장됩니다. 다른 사람과 파일을 공유할 때 주의하세요.").grid(
-            row=len(self.FIELDS), column=0, columnspan=2, sticky="w", pady=(8, 0))
+        row = len(self.FIELDS)
+        ttk.Label(frm, text="검색 브랜드\n(쉼표·줄바꿈 구분)").grid(row=row, column=0, sticky="nw", pady=4)
+        self.brands_box = tk.Text(frm, width=46, height=6, wrap="word", font=FONT, relief="solid", borderwidth=1)
+        self.brands_box.insert("1.0", ", ".join(b["name"] for b in config.get("brands", [])))
+        self.brands_box.grid(row=row, column=1, sticky="we", padx=(8, 0), pady=4)
+        ttk.Label(frm, foreground="#666", justify="left",
+                  text="Gemini 모델 예: gemini-pro-latest(최신 Pro), gemini-3.8-flash(빠르고 저렴)\n"
+                       "키는 이 프로그램 폴더의 config.json에 저장됩니다. 폴더째 공유하지 마세요.").grid(
+            row=row + 1, column=0, columnspan=2, sticky="w", pady=(8, 0))
         btns = ttk.Frame(frm)
-        btns.grid(row=len(self.FIELDS) + 1, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        btns.grid(row=row + 2, column=0, columnspan=2, sticky="e", pady=(12, 0))
         ttk.Button(btns, text="취소", command=self.destroy).pack(side="right")
         ttk.Button(btns, text="저장", command=self.save).pack(side="right", padx=6)
         self.saved = None
         self.grab_set()
 
+    def _get(self, key):
+        if key.startswith("ai."):
+            return self.config_data.get("ai", {}).get(key[3:], "")
+        return self.config_data.get(key, "")
+
     def save(self):
-        self.saved = {k: v.get().strip() for k, v in self.vars.items()}
-        save_config(self.saved)
+        values = {"ai": {}}
+        for key, var in self.vars.items():
+            if key.startswith("ai."):
+                values["ai"][key[3:]] = var.get().strip()
+            else:
+                values[key] = var.get().strip()
+        names = [n.strip() for n in re.split(r"[,\n]", self.brands_box.get("1.0", "end")) if n.strip()]
+        values["brands"] = brands_from_names(list(dict.fromkeys(names)), self.config_data.get("brands", []))
+        save_config(values)
+        self.saved = values
         self.destroy()
 
 
@@ -122,6 +148,10 @@ class App(tk.Tk):
         self.hours = tk.StringVar(value=str(self.config_data["lookback_hours"]))
         ttk.Spinbox(hrs, from_=1, to=168, textvariable=self.hours, width=5).pack(side="left")
         ttk.Label(hrs, text="시간 기사").pack(side="left", padx=4)
+        self.search_brands = tk.BooleanVar(value=self.config_data.get("search_brands", True))
+        self.brand_check = ttk.Checkbutton(hrs, variable=self.search_brands)
+        self.brand_check.pack(side="left", padx=(16, 0))
+        self._update_brand_label()
 
         ttk.Radiobutton(src, text="파일에서 불러오기", value="file", variable=self.source).grid(
             row=2, column=0, sticky="w", pady=(10, 0))
@@ -136,9 +166,12 @@ class App(tk.Tk):
         self.mat_label = ttk.Label(extra, text="(보도자료·메모 .txt/.md, 선택)", foreground="#666")
         self.mat_label.grid(row=0, column=1, sticky="w", padx=6)
         ttk.Button(extra, text="지우기", command=self.clear_materials).grid(row=0, column=2, sticky="e")
-        self.use_ai = tk.BooleanVar(value=False)
-        ttk.Checkbutton(extra, text="Claude로 AI 발제안 초안도 쓰기 (Claude API 키 필요)",
-                        variable=self.use_ai).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(extra, text="AI 발제안·보도자료 점검·틀어보기").grid(row=1, column=0, sticky="w", pady=(8, 0))
+        labels = [label for label, _ in AI_CHOICES]
+        current = {v: label for label, v in AI_CHOICES}.get(self.config_data.get("ai_choice"), labels[0])
+        self.ai_choice = tk.StringVar(value=current)
+        ttk.Combobox(extra, textvariable=self.ai_choice, values=labels, state="readonly", width=22).grid(
+            row=1, column=1, sticky="w", padx=6, pady=(8, 0))
         extra.columnconfigure(1, weight=1)
 
         bar = ttk.Frame(root)
@@ -192,8 +225,16 @@ class App(tk.Tk):
         dlg = SettingsDialog(self, self.config_data)
         self.wait_window(dlg)
         if dlg.saved:
-            self.config_data.update(dlg.saved)
+            self.config_data = _merge(self.config_data, dlg.saved)
+            self._update_brand_label()
             self.log("설정을 저장했습니다.")
+
+    def _update_brand_label(self):
+        n = len(self.config_data.get("brands", []))
+        self.brand_check.configure(text=f"브랜드 {n}개도 검색")
+
+    def _ai_provider(self):
+        return dict(AI_CHOICES).get(self.ai_choice.get())
 
     def open_output(self):
         out = Path(self.config_data["output_dir"])
@@ -215,28 +256,37 @@ class App(tk.Tk):
             return
         if hours.is_integer():
             hours = int(hours)
-        save_config({"keywords": keywords, "lookback_hours": hours})
-        self.config_data.update({"keywords": keywords, "lookback_hours": hours})
+        provider = self._ai_provider()
+        values = {"keywords": keywords, "lookback_hours": hours,
+                  "search_brands": self.search_brands.get(), "ai_choice": provider}
+        save_config(values)
+        self.config_data.update(values)
         inputs = self.input_files if self.source.get() == "file" else []
         self._start(dict(inputs=inputs, materials_dir=self.materials_dir, hours=hours,
-                         use_ai=self.use_ai.get()))
+                         use_ai=bool(provider)))
 
     def run_sample(self):
+        # 샘플은 가상 브랜드 목록으로 돌린다
+        sample_cfg = json.loads(resource("samples/sample_config.json").read_text(encoding="utf-8"))
         self._start(dict(inputs=[resource("samples/sample_articles.json")],
                          materials_dir=resource("samples/materials"), hours=0,
-                         use_ai=self.use_ai.get(), use_history=False))
+                         use_ai=bool(self._ai_provider()), use_history=False),
+                    overrides={"brands": sample_cfg["brands"]})
 
-    def _start(self, kwargs):
+    def _start(self, kwargs, overrides=None):
         if self.worker and self.worker.is_alive():
             return
         self.run_btn.configure(state="disabled")
         self.progress.pack(side="right", padx=8)
         self.progress.start(12)
+        provider = self._ai_provider() or "claude"  # tk 변수는 작업 스레드 밖에서 읽는다
         self.log("─" * 30)
 
         def work():
             try:
-                result = pipeline.run(dict(self.config_data), log=self.log, **kwargs)
+                cfg = _merge(self.config_data, overrides or {})
+                cfg["ai"] = dict(cfg["ai"], provider=provider)
+                result = pipeline.run(cfg, log=self.log, **kwargs)
                 self.after(0, self._done, result["html"], None)
             except pipeline.BaljeError as e:
                 self.after(0, self._done, None, str(e))
@@ -269,8 +319,11 @@ def selftest(result_file):
         app.destroy()
         lines.append("gui ok")
         import anthropic  # noqa: F401 - exe에 포함됐는지 확인
+        from google import genai  # noqa: F401
         lines.append("anthropic ok")
-        r = pipeline.run(load_config(), inputs=[resource("samples/sample_articles.json")],
+        lines.append("gemini sdk ok")
+        sample_cfg = json.loads(resource("samples/sample_config.json").read_text(encoding="utf-8"))
+        r = pipeline.run(_merge(load_config(), sample_cfg), inputs=[resource("samples/sample_articles.json")],
                          materials_dir=resource("samples/materials"), hours=0,
                          use_history=False, out_dir="selftest_out", log=lambda m: None)
         lines.append(f"pipeline ok {len(r['clusters'])}")
@@ -303,7 +356,11 @@ def _net_checks():
         raise RuntimeError("anthropic: 가짜 키로 성공할 수 없음")
     except anthropic.AuthenticationError:
         pass
-    return ["naver https ok", "anthropic https ok"]
+    from .llm import call_gemini
+    msg = call_gemini("x", "hi", {"gemini_api_key": "selftest-invalid", "ai": {"gemini_model": "gemini-pro-latest"}})
+    if "API 키가 올바르지 않습니다" not in msg:
+        raise RuntimeError("gemini: " + msg)
+    return ["naver https ok", "anthropic https ok", "gemini https ok"]
 
 
 def main():

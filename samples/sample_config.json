@@ -1,0 +1,55 @@
+{
+  "_설명": "가상 샘플용 설정(실제 기업과 무관). python -m balje --config samples/sample_config.json ...",
+  "search_brands": false,
+  "brands": [
+    {
+      "name": "A자동차",
+      "query": "A자동차",
+      "aliases": [
+        "A자동차"
+      ]
+    },
+    {
+      "name": "B모터스",
+      "query": "B모터스",
+      "aliases": [
+        "B모터스"
+      ]
+    },
+    {
+      "name": "C배터리",
+      "query": "C배터리",
+      "aliases": [
+        "C배터리"
+      ]
+    },
+    {
+      "name": "D차",
+      "query": "D차",
+      "aliases": [
+        "D차"
+      ]
+    },
+    {
+      "name": "E사",
+      "query": "E사",
+      "aliases": [
+        "E사"
+      ]
+    },
+    {
+      "name": "가상모터스",
+      "query": "가상모터스",
+      "aliases": [
+        "가상모터스"
+      ]
+    },
+    {
+      "name": "나래자동차",
+      "query": "나래자동차",
+      "aliases": [
+        "나래자동차"
+      ]
+    }
+  ]
+}

@@ -1,10 +1,12 @@
 """수집 → 묶기 → 메모 → (AI) → 출력. 명령줄과 GUI가 함께 쓴다."""
 
+import time
 import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
 from . import analyze, collect, pitch, report
+from .config import search_queries
 
 
 class BaljeError(Exception):
@@ -23,7 +25,9 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
             articles += collect.load_articles(path, config.get("press_map"))
         log(f"파일에서 기사 {len(articles)}건 읽음")
     else:
-        for kw in config["keywords"]:
+        queries = search_queries(config)
+        log(f"네이버 검색어 {len(queries)}개 수집 시작")
+        for kw in queries:
             try:
                 got = collect.fetch_naver(
                     kw, config["pages_per_keyword"],
@@ -43,6 +47,12 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
                 continue
             log(f"[{kw}] {len(got)}건")
             articles += got
+            time.sleep(0.1)  # 네이버 API 초당 호출 제한 대비
+        brand_queries = [b["query"] for b in config.get("brands", [])]
+        before = len(articles)
+        articles = analyze.filter_auto(articles, brand_queries, config.get("auto_terms", []))
+        if before != len(articles):
+            log(f"자동차와 무관한 브랜드 검색 결과 {before - len(articles)}건 제외")
     materials = collect.load_materials(materials_dir)
     if materials:
         log(f"기자 제공 자료 {len(materials)}개 읽음")
@@ -60,14 +70,18 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
         for a in c.articles:
             n += 1
             a.id = f"A{n:03d}"
-    notes = {c.id: pitch.rule_based_notes(c, config) for c in clusters}
+    trends = analyze.cross_trends(clusters)
+    notes = {c.id: pitch.rule_based_notes(c, config, trends) for c in clusters}
+    brands = analyze.brand_summary(clusters)
     log(f"기사 {len(articles)}건 → 이슈 {len(clusters)}개")
 
     # 3) AI 발제안(선택)
     ai_text = None
     if use_ai:
-        log("Claude 발제안 작성 중... (1~3분 걸릴 수 있음)")
-        ai_text = pitch.ai_pitches(clusters, materials, notes, config)
+        provider = {"claude": "Claude", "gemini": "Gemini", "both": "Claude·Gemini"}.get(
+            config["ai"].get("provider"), config["ai"].get("provider"))
+        log(f"{provider} 발제안 작성 중... (1~3분 걸릴 수 있음)")
+        ai_text = pitch.ai_pitches(clusters, materials, notes, config, trends)
 
     # 4) 출력
     out = Path(out_dir or config["output_dir"])
@@ -76,7 +90,10 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
     meta = {
         "articles": len(articles),
         "keywords": [] if inputs else config["keywords"],
+        "brand_search": not inputs and config.get("search_brands", True),
         "materials": [m["name"] for m in materials],
+        "trends": trends,
+        "brands": brands,
     }
     md_path = out / f"발제노트_{stamp}.md"
     html_path = out / f"발제노트_{stamp}.html"

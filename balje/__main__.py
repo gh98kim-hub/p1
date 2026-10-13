@@ -2,7 +2,8 @@
 
 예)
   python -m balje                       # 네이버 API로 수집 → 발제 노트
-  python -m balje --ai                  # + Claude 발제안 초안
+  python -m balje --ai                  # + AI 발제안 초안(설정의 provider)
+  python -m balje --ai both             # Claude·Gemini 둘 다 써서 비교
   python -m balje --input 모니터링.json   # 모니터링 프로그램 결과 파일 사용
   python -m balje --materials 자료폴더 --ai
 """
@@ -22,7 +23,9 @@ def build_parser():
     p.add_argument("--keywords", help="검색어(쉼표 구분). 설정 파일 값을 덮어씀")
     p.add_argument("--hours", type=float, help="최근 N시간 기사만")
     p.add_argument("--materials", help="기자 제공 자료 폴더(.txt/.md)")
-    p.add_argument("--ai", action="store_true", help="Claude로 발제안 초안 작성")
+    p.add_argument("--ai", nargs="?", const="config", choices=["config", "claude", "gemini", "both"],
+                   help="AI 발제안 작성. claude / gemini / both(둘 다 비교). 값을 생략하면 설정 파일을 따름")
+    p.add_argument("--no-brands", action="store_true", help="브랜드 검색어를 쓰지 않음")
     p.add_argument("--top", type=int, default=10, help="상세 표시할 이슈 수")
     p.add_argument("--out", help="출력 폴더(기본: 설정의 output_dir)")
     p.add_argument("--no-history", action="store_true", help="신규/지속 판별용 기록을 쓰지 않음")
@@ -33,12 +36,16 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     config = load_config(args.config)
+    if args.ai and args.ai != "config":
+        config["ai"]["provider"] = args.ai
+    if args.no_brands:
+        config["search_brands"] = False
     if args.keywords:
         config["keywords"] = [k.strip() for k in args.keywords.split(",") if k.strip()]
     try:
         pipeline.run(
             config, inputs=args.input, materials_dir=args.materials, hours=args.hours,
-            use_ai=args.ai, top=args.top, out_dir=args.out,
+            use_ai=bool(args.ai), top=args.top, out_dir=args.out,
             use_history=not args.no_history, save_raw=args.save_raw,
         )
     except pipeline.BaljeError as e:

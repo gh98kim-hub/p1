@@ -71,7 +71,10 @@ class Cluster:
     exclusive: list = field(default_factory=list)
     numbers: list = field(default_factory=list)
     watch_hits: list = field(default_factory=list)
+    brands: list = field(default_factory=list)
     angles: list = field(default_factory=list)
+    release_kind: str = ""          # "홍보성" / "사업 발표" / "" (보도자료성 아님)
+    release_signals: list = field(default_factory=list)
     first_seen: datetime | None = None
     latest: datetime | None = None
     recent_count: int = 0
@@ -137,7 +140,53 @@ def cluster_articles(articles, threshold=0.45):
 
 
 def _contains(text, term):
+    # 영문 대문자 약어(MINI, BYD, KGM 등)는 대소문자를 구분해 오탐을 줄인다
+    if term.isascii() and term.isupper():
+        return term in text
     return term.lower() in text.lower()
+
+
+def brand_hits(text, brands):
+    return [b["name"] for b in brands if any(_contains(text, a) for a in b.get("aliases", [b["name"]]))]
+
+
+def filter_auto(articles, brand_queries, auto_terms):
+    """브랜드 검색어로 들어온 기사 중 자동차 맥락이 없는 기사(야구단·인물 등)를 뺀다."""
+    brand_queries = set(brand_queries)
+    out = []
+    for a in articles:
+        if a.keyword in brand_queries:
+            text = f"{a.title} {a.description}"
+            if not any(_contains(text, t) for t in auto_terms):
+                continue
+        out.append(a)
+    return out
+
+
+def detect_release(c, text, config):
+    """보도자료성 이슈인지 추정한다. (종류, 근거 목록)을 돌려준다."""
+    markers = config.get("release_markers", {})
+    promo = [t for t in markers.get("홍보성", []) if _contains(text, t)]
+    biz = [t for t in markers.get("사업 발표", []) if _contains(text, t)]
+    wire = [a.press for a in c.articles if any(w in (a.press or "") for w in config.get("release_press", []))]
+    signals = []
+    if wire:
+        signals.append("보도자료 배포 매체: " + ", ".join(sorted(set(wire))))
+    burst = (len(c.press) >= 3 and c.first_seen and c.latest
+             and (c.latest - c.first_seen) <= timedelta(hours=3))
+    if burst:
+        signals.append(f"{len(c.press)}개 매체가 3시간 안에 비슷한 제목으로 보도")
+    if promo:
+        signals.append("홍보성 표현: " + ", ".join(promo[:4]))
+    if biz:
+        signals.append("발표형 표현: " + ", ".join(biz[:4]))
+    if c.exclusive:
+        return "", []
+    if promo:
+        return "홍보성", signals
+    if wire or (biz and (burst or len(c.press) <= 2)):
+        return "사업 발표", signals
+    return "", []
 
 
 def enrich(clusters, config, history=None, now=None):
@@ -154,13 +203,17 @@ def enrich(clusters, config, history=None, now=None):
         c.recent_count = sum(1 for d in dates if d >= recent_cut)
         c.press = sorted({a.press for a in c.articles if a.press})
         c.exclusive = [a for a in c.articles if any("단독" in t for t in a.tags) or "단독" in a.title[:6]]
-        c.numbers = list(dict.fromkeys(
+        nums = list(dict.fromkeys(
             n.strip() for a in c.articles for n in _NUMBER.findall(a.title) if re.search(r"[^\d,.]", n)
-        ))[:8]
-        c.watch_hits = [t for t in config.get("watch_terms", []) if _contains(text, t)]
+        ))
+        # '3조2천억'처럼 더 긴 표기('3조2천억원')의 앞부분인 것은 뺀다
+        c.numbers = [n for n in nums if not any(o != n and o.startswith(n) for o in nums)][:8]
+        c.brands = brand_hits(text, config.get("brands", []))
+        c.watch_hits = c.brands + [t for t in config.get("watch_terms", []) if _contains(text, t)]
         c.angles = [name for name, spec in config.get("angles", {}).items()
                     if any(_contains(text, t) for t in spec.get("terms", []))]
         c.my_press_covered = bool(my_press) and any(my_press in (a.press or "") for a in c.articles)
+        c.release_kind, c.release_signals = detect_release(c, text, config)
         seen = sum(1 for a in c.articles if a.link in history)
         c.is_new = seen < max(1, len(c.articles) / 2)
         score_cluster(c)
@@ -178,9 +231,39 @@ def score_cluster(c):
         (min(c.recent_count, 5) * 1.0, f"최근 6시간 {c.recent_count}건" if c.recent_count else ""),
         (2.0 if c.numbers else 0.0, "수치 등장" if c.numbers else ""),
         (3.0 if c.is_new else 0.0, "신규 이슈" if c.is_new else ""),
+        (-4.0 if c.release_kind == "홍보성" else 0.0, "홍보성 보도자료 감점" if c.release_kind == "홍보성" else ""),
     ]
     c.score = round(sum(v for v, _ in parts), 1)
     c.reasons = [label for v, label in parts if v and label]
+
+
+def cross_trends(clusters, min_brands=2):
+    """서로 다른 브랜드의 같은 유형 이슈를 묶어 '업계 흐름' 기획 후보를 찾는다."""
+    groups = {}
+    for c in clusters:
+        # 홍보성 보도자료는 브랜드가 달라도 같은 유형(할인·캠페인 등)이라 묶을 만하다.
+        # 사업 발표는 내용이 제각각이라 각도 분류(신차·전동화 등)로만 묶는다.
+        cats = list(c.angles) + (["보도자료·홍보성"] if c.release_kind == "홍보성" else [])
+        for cat in cats:
+            groups.setdefault(cat, []).append(c)
+    trends = []
+    for cat, members in groups.items():
+        brands = list(dict.fromkeys(b for c in members for b in c.brands))
+        if len(members) >= 2 and len(brands) >= min_brands:
+            trends.append({"category": cat, "brands": brands, "clusters": members})
+    trends.sort(key=lambda t: (-len(t["brands"]), -len(t["clusters"])))
+    return trends
+
+
+def brand_summary(clusters):
+    """브랜드별 기사 수·이슈 수·대표 이슈."""
+    table = {}
+    for c in clusters:
+        for b in c.brands:
+            row = table.setdefault(b, {"brand": b, "articles": 0, "issues": 0, "top": c})
+            row["articles"] += len(c.articles)
+            row["issues"] += 1
+    return sorted(table.values(), key=lambda r: -r["articles"])
 
 
 # ---------------------------------------------------------------- 히스토리
