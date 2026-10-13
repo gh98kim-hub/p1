@@ -269,7 +269,7 @@ class _TextGrabber(HTMLParser):
             self.target_n -= 1
             if self.target_n <= 0:
                 self.target_done = True  # 첫 본문 영역만 사용
-        if self._in_target() and tag in ("p", "div"):
+        if self._in_target() and tag in ("p", "div", "strong", "b", "h2", "h3", "h4", "li", "tr"):
             self.target.append("\n")
 
     def handle_data(self, data):

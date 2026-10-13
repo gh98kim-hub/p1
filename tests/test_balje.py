@@ -268,7 +268,8 @@ FIX = ROOT / "tests" / "fixtures"
 def test_extract_body_naver_and_generic():
     raw = (FIX / "naver_article.html").read_bytes()
     body = collect.extract_body(collect._decode(raw, None))
-    assert body.startswith("가상자동차가 13일") and "업계는 연말 출시를 예상한다." in body
+    assert body.startswith("부제목 첫 줄\n부제목 둘째 줄\n")
+    assert "\n가상자동차가 13일" in body and "업계는 연말 출시를 예상한다." in body
     assert "사진 설명" not in body and "스크립트" not in body and "기자" not in body
     raw = (FIX / "generic_article.html").read_bytes()  # euc-kr
     body = collect.extract_body(collect._decode(raw, None))
