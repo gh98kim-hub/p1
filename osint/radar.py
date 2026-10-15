@@ -63,8 +63,9 @@ def collect(config, watch, store, now=None, log=print, only=None):
             try:
                 got = sec_edgar.search(f'"{name}"', since, now, ch.get("forms", ""), config.get("sec_email", ""))
             except Exception as e:  # noqa: BLE001
-                if "403" in str(e) and not config.get("sec_email"):
-                    raise RuntimeError("SEC가 접속을 거부했습니다. [설정]에 SEC 연락처 이메일을 넣으세요.") from e
+                if "403" in str(e):
+                    raise RuntimeError("SEC가 접속을 거부했습니다(403). [설정]에 실제 연락처 이메일을 넣었는지 확인하세요. "
+                                       "넣었는데도 막히면 회사망·공용망 차단일 수 있습니다.") from e
                 log(f"[SEC] {name} 실패: {e}")
                 continue
             for s in got:

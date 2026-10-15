@@ -15,7 +15,8 @@ ARCHIVE = "https://www.sec.gov/Archives/edgar/data"
 
 
 def headers(email):
-    return {"User-Agent": f"BaljeOSINT/1.0 ({email or 'contact-email-not-set'})", "Accept": "application/json"}
+    """SEC 안내 형식: '이름 연락처이메일' + gzip 허용."""
+    return {"User-Agent": f"Balje OSINT {email or 'contact-email-not-set'}", "Accept-Encoding": "gzip, deflate"}
 
 
 def parse_fts(data, query=""):
@@ -57,7 +58,7 @@ def search(query, start, end, forms, email=""):
 
 def document_text(url, email="", max_chars=4000):
     """공시 원문 일부(발제문 근거용)."""
-    html_text = http.get_text(url, headers={"User-Agent": headers(email)["User-Agent"]})
+    html_text = http.get_text(url, headers=headers(email))
     text = extract_body(html_text, max_chars)
     if not text:
         text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html_text, flags=re.S | re.I)

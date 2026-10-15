@@ -604,15 +604,19 @@ def _diag_variants():
          {"User-Agent": f"BaljeOSINT {email}"}),
         ("sec fts UA-b", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22",
          {"User-Agent": f"Balje Research {email}", "Accept-Encoding": "identity", "Host": "efts.sec.gov"}),
-        ("sec fts browser", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22",
-         {"User-Agent": "Mozilla/5.0"}),
+        ("sec fts sec-format", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22",
+         {"User-Agent": f"Balje OSINT {email}", "Accept-Encoding": "gzip, deflate"}),
+        ("sec www sec-format", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&output=atom",
+         {"User-Agent": f"Balje OSINT {email}", "Accept-Encoding": "gzip, deflate", "Host": "www.sec.gov"}),
         ("sec www fts", "https://www.sec.gov/cgi-bin/srch-edgar?text=Hyundai&first=2024&last=2026",
          {"User-Agent": f"BaljeOSINT {email}"}),
         ("nhtsa models 2025", "https://api.nhtsa.gov/products/vehicle/models?modelYear=2025&make=hyundai&issueType=r", {}),
         ("nhtsa models 2026", "https://api.nhtsa.gov/products/vehicle/models?modelYear=2026&make=HYUNDAI&issueType=r", {}),
         ("nhtsa makes 2025", "https://api.nhtsa.gov/products/vehicle/makes?modelYear=2025&issueType=r", {}),
         ("nhtsa recalls tucson", "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=tucson&modelYear=2024", {}),
-        ("nhtsa recalls docs", "https://api.nhtsa.gov/recalls/recallsByVehicle?make=acura&model=rdx&modelYear=2012", {}),
+        ("nhtsa models osint-headers",
+         "https://api.nhtsa.gov/products/vehicle/models?modelYear=2026&make=hyundai&issueType=r",
+         {"User-Agent": "BaljeOSINT/1.0 (news research tool)", "Accept": "application/json"}),
     ]
     out = []
     for label, url, headers in tests:

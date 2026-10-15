@@ -1,24 +1,36 @@
 """공통 HTTP(JSON·텍스트). 표준 라이브러리만 쓴다."""
 
+import gzip
 import json
 import urllib.parse
 import urllib.request
+import zlib
 
-from balje.collect import USER_AGENT, _decode
+from balje.collect import _decode
+
+USER_AGENT = "BaljeOSINT/1.0 (news research tool)"
 
 
 def get(url, params=None, headers=None, timeout=20):
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-    h = {"User-Agent": USER_AGENT, "Accept": "application/json, text/html;q=0.9, */*;q=0.5"}
+    h = {"User-Agent": USER_AGENT, "Accept": "*/*"}
     h.update(headers or {})
     req = urllib.request.Request(url, headers=h)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read(), resp.headers.get_content_charset()
+        raw = resp.read()
+        enc = (resp.headers.get("Content-Encoding") or "").lower()
+        if enc == "gzip":
+            raw = gzip.decompress(raw)
+        elif enc == "deflate":
+            raw = zlib.decompress(raw)
+        return raw, resp.headers.get_content_charset()
 
 
 def get_json(url, params=None, headers=None, timeout=20):
-    raw, _ = get(url, params, headers, timeout)
+    h = {"Accept": "application/json"}
+    h.update(headers or {})
+    raw, _ = get(url, params, h, timeout)
     return json.loads(raw.decode("utf-8"))
 
 

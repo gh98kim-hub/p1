@@ -35,7 +35,7 @@ def parse_report_date(value):
 
 def models(make, year):
     data = http.get_json(f"{API}/products/vehicle/models", {"modelYear": year, "make": make, "issueType": "r"})
-    return [r.get("model") for r in data.get("results", []) if r.get("model")]
+    return list(dict.fromkeys(r.get("model") for r in data.get("results", []) if r.get("model")))
 
 
 def recalls_for(make, model, year):
