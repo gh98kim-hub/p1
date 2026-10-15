@@ -15,7 +15,7 @@ a = Analysis(
     hiddenimports=[
         "osint.radar", "osint.reverse", "osint.notify",
         "osint.sources.sec_edgar", "osint.sources.courts", "osint.sources.nhtsa", "osint.sources.news",
-        "osint.sources.federal_register", "osint.board", "osint.classify", "balje.board", "balje.dashboard",
+        "osint.sources.federal_register", "osint.board", "osint.classify", "balje.board", "balje.dashboard", "balje.watch_editor",
     ],
     excludes=["matplotlib", "numpy", "pandas", "PyQt5", "PySide6", "IPython"],
     noarchive=False,

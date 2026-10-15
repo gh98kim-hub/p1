@@ -315,8 +315,21 @@ class App(tk.Tk):
         ttk.Spinbox(opt, from_=0, to=1440, increment=30, textvariable=self.osint_auto, width=5).pack(side="left", padx=4)
         ttk.Label(opt, text="분마다(0=끔) · AI").pack(side="left")
         self._ai_combo(opt).pack(side="left", padx=4)
+        qa = ttk.Frame(tab)
+        qa.pack(fill="x", pady=(10, 0))
+        ttk.Label(qa, text="추적 대상 추가").pack(side="left")
+        self.watch_quick = tk.StringVar()
+        qe = ttk.Entry(qa, textvariable=self.watch_quick, width=44)
+        qe.pack(side="left", padx=4, fill="x", expand=True)
+        qe.bind("<Return>", lambda e: self.quick_add_watch())
+        self.watch_quick_prio = tk.StringVar(value=osint_watchlist.PRIORITY_LABEL["mid"])
+        ttk.Combobox(qa, textvariable=self.watch_quick_prio, values=list(osint_watchlist.PRIORITY_LABEL.values()),
+                     state="readonly", width=5).pack(side="left", padx=4)
+        ttk.Button(qa, text="추가", command=self.quick_add_watch).pack(side="left")
+        ttk.Label(tab, text="쉼표로 구분 — 첫 단어가 대표 이름. 예) 현대모비스, Hyundai Mobis, 现代摩比斯 (영문이 있어야 해외 자료에서 찾습니다)",
+                  foreground="#888").pack(anchor="w")
         bar = ttk.Frame(tab)
-        bar.pack(fill="x", pady=(10, 0))
+        bar.pack(fill="x", pady=(8, 0))
         ttk.Button(bar, text="추적 대상 편집", command=self.edit_watchlist).pack(side="left")
         ttk.Button(bar, text="추적 대상 다시 읽기", command=self.reload_watchlist).pack(side="left", padx=6)
         ttk.Button(bar, text="설정", command=self.open_settings).pack(side="left")
@@ -499,9 +512,35 @@ class App(tk.Tk):
         return Path(self.config_data["osint"]["watchlist_file"])
 
     def edit_watchlist(self):
-        p = osint_watchlist.ensure_file(self._watchlist_path())
-        self.log(f"추적 대상 파일: {p.resolve()} (고친 뒤 저장하고 [추적 대상 다시 읽기])")
-        open_text(p)
+        """추적 대상을 키워드 칸으로 고치는 창(메모장 편집은 창 안의 버튼으로)."""
+        from .watch_editor import WatchlistEditor
+        try:
+            WatchlistEditor(self, self._watchlist_path(), on_saved=self.reload_watchlist, open_text=open_text)
+        except WatchlistError as e:
+            messagebox.showerror("추적 대상", f"{e}\n\n메모장으로 열어 고치세요.")
+            open_text(osint_watchlist.ensure_file(self._watchlist_path()))
+
+    def quick_add_watch(self):
+        """OSINT 탭의 '추적 대상 추가' 칸: 첫 키워드가 대표 이름, 나머지는 다른 표기."""
+        text = self.watch_quick.get().strip()
+        if not text:
+            return
+        path = osint_watchlist.ensure_file(self._watchlist_path())
+        try:
+            data = osint_watchlist.load(path)
+            e, created = osint_watchlist.quick_add(data, text, self.watch_quick_prio_value())
+            osint_watchlist.save(data, path)
+        except (WatchlistError, OSError) as err:
+            messagebox.showerror("추적 대상", str(err))
+            return
+        self.watch_quick.set("")
+        self.log(f"추적 대상 '{e['name']}' " + ("추가" if created else "키워드 보탬")
+                 + f" — 한국어 {len(e['ko'])} · 영문 {len(e['en'])} · 중문 {len(e['zh'])}개")
+        for w in osint_watchlist.warnings(e):
+            self.log("  주의: " + w)
+
+    def watch_quick_prio_value(self):
+        return {v: k for k, v in osint_watchlist.PRIORITY_LABEL.items()}.get(self.watch_quick_prio.get(), "mid")
 
     def reload_watchlist(self):
         try:
@@ -625,6 +664,11 @@ def selftest(result_file):
         d.update()
         lines.append(f"dashboard ok {len(d.table.get_children())} rows in {d.current_group}, "
                      f"{len(d._widgets)} buttons, translate button {d.tr_btn.winfo_manager() or 'hidden'}")
+        from .watch_editor import WatchlistEditor
+        ed = WatchlistEditor(app2, "selftest_out/watchlist.json")
+        ed.update()
+        lines.append(f"watchlist editor ok {len(ed.ent_list.get_children())} entities")
+        ed.destroy()
         app2.destroy()
         from osint import radar, reverse  # noqa: F401 - exe에 포함됐는지 확인
         w = osint_watchlist.load()
