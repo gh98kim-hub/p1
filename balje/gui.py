@@ -267,6 +267,8 @@ class App(tk.Tk):
         ttk.Button(bar, text="설정", command=self.open_settings).pack(side="left")
         btn = ttk.Button(bar, text="레이더 실행", command=self.run_radar)
         btn.pack(side="right")
+        ttk.Button(bar, text="결과 폴더", command=self.open_output).pack(side="right", padx=6)
+        ttk.Button(bar, text="리포트 열기", command=lambda: self.open_latest("OSINT리포트_*.html")).pack(side="right")
         self.run_buttons.append(btn)
         ttk.Label(tab, foreground="#666", justify="left",
                   text="SEC·NHTSA·뉴스 채널은 키 없이 동작합니다. 미국 법원은 [설정]의 CourtListener 토큰을 씁니다.\n"
@@ -283,6 +285,7 @@ class App(tk.Tk):
         ttk.Label(bar, text="AI").pack(side="left")
         self._ai_combo(bar).pack(side="left", padx=4)
         ttk.Label(bar, foreground="#666", text="(AI 없이도 추적 대상 목록으로 1차 출처 후보는 찾습니다)").pack(side="left", padx=6)
+        ttk.Button(bar, text="역추적 리포트 열기", command=lambda: self.open_latest("역추적_*.html")).pack(side="right", padx=6)
         btn = ttk.Button(bar, text="역추적 실행", command=self.run_reverse)
         btn.pack(side="right")
         self.run_buttons.append(btn)
@@ -482,8 +485,18 @@ class App(tk.Tk):
             self.log("다른 작업이 진행 중이라 자동 실행을 다음으로 미룹니다.")
             self._schedule_auto()
 
+    def open_latest(self, pattern):
+        files = sorted(Path(self.config_data["output_dir"]).glob(pattern), key=lambda p: p.stat().st_mtime)
+        if not files:
+            messagebox.showinfo("발제 도우미", "아직 만든 리포트가 없습니다.")
+            return
+        self.log(f"열기: {files[-1].resolve()}")
+        webbrowser.open(files[-1].resolve().as_uri())
+
     def _done_radar(self, result, auto):
         self.log(f"레이더 완료: 후보 {len(result['cands'])}건")
+        self.log(f"리포트: {Path(result['html']).resolve()}")
+        self.log("[리포트 열기]로 다시 볼 수 있습니다. 마크다운(.md)은 같은 폴더에 있습니다.")
         if not auto:
             webbrowser.open(Path(result["html"]).resolve().as_uri())
         self._schedule_auto()
