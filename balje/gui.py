@@ -715,6 +715,21 @@ def _osint_net_checks():
     rec("fed_register OR", fr('"Hyundai" | "Kia"'))
     rec("fed_register topic", fr("lithium-ion batteries"))
     rec("kr_gov feeds", krgov)
+
+    def kr_raw():
+        from balje.collect import _http_get
+        res = []
+        for u in ("https://www.korea.kr/rss/dept_motie.xml", "https://www.korea.kr/rss/pressrelease.xml",
+                  "https://www.korea.kr/rss/policy.xml", "https://www.korea.kr/rss/dept_molit.xml"):
+            try:
+                raw, cs = _http_get(u)
+                head = raw[:160].decode(cs or "utf-8", "replace").replace("\n", " ")
+                res.append(f"{u} {len(raw)}B cs={cs} items={raw.count(b'<item')} head={head!r}")
+            except Exception as e:  # noqa: BLE001
+                res.append(f"{u} ERROR {e}")
+        return " || ".join(res)
+
+    rec("kr_gov raw", kr_raw)
     for key in ("us_federal", "gov_press", "eu_comp", "china_gov", "pr_wire", "local_media", "global_media",
                 "china_media"):
         rec(key, gn(key))
