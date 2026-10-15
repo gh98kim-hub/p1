@@ -196,33 +196,62 @@ DEFAULTS = {
         "mosaic_days": 14,         # 모자이크(다른 채널 신호 묶기)에 쓰는 과거 신호 기간
         "domestic_days": 30,       # 국내 기보도 검색 기간
         "max_candidates": 8,
+        "translate_max": 150,      # 결과 화면에 한국어로 보여줄 외국어 자료 최대 건수(번역 AI 사용)
+        "fetch_docs": True,        # 발제 후보의 1차 출처 원문(정부·기업 사이트) 앞부분을 가져온다
         "auto_minutes": 0,         # 창을 켜두면 N분마다 자동 실행(0=끔)
         "watchlist_file": "watchlist.json",
         "db_file": "data/osint.db",
         "channels": {
+            # ── 정부·공공(1차 자료)
             "sec": {"enabled": True, "name": "SEC 공시", "weight": 5,
                     "forms": "8-K,6-K,10-Q,10-K,S-1,S-4,425", "priorities": ["high", "mid"]},
             "courts": {"enabled": True, "name": "미국 법원", "weight": 5, "kinds": ["r", "o"],
                        "entities_per_query": 6, "priorities": ["high", "mid"]},
             "nhtsa": {"enabled": True, "name": "NHTSA 리콜", "weight": 4, "model_years": 4, "refresh_hours": 12,
                       "makes": {"HYUNDAI": "현대자동차", "KIA": "기아", "GENESIS": "제네시스"}},
+            "fed_register": {"enabled": True, "name": "미 연방관보", "weight": 4, "priorities": ["high", "mid"],
+                             "max_entities": 30, "per_page": 20,
+                             # 기업명과 무관하게 볼 정책 주제(반덤핑·관세·안전 규정 등)
+                             "topics": ["lithium-ion batteries", "electric vehicle", "passenger vehicle tires",
+                                        "automobile parts", "motor vehicle safety standard",
+                                        "critical minerals"]},
+            "us_federal": {"enabled": True, "name": "미 연방정부 발표", "weight": 4, "sites": [
+                "nhtsa.gov", "transportation.gov", "energy.gov", "epa.gov", "commerce.gov", "trade.gov",
+                "usitc.gov", "ustr.gov", "treasury.gov", "whitehouse.gov", "ftc.gov", "justice.gov",
+                "cbp.gov", "dol.gov"], "sites_per_query": 7},
             "gov_press": {"enabled": True, "name": "주정부·지자체 발표", "weight": 4, "sites": [
                 "gov.georgia.gov", "georgia.org", "governor.alabama.gov", "madeinalabama.com", "tn.gov",
                 "governor.ky.gov", "ced.ky.gov", "governor.ohio.gov", "michigan.gov", "in.gov", "iedc.in.gov",
                 "azgovernor.gov", "gov.louisiana.gov", "opportunitylouisiana.gov", "pa.gov", "nc.gov",
                 "sccommerce.com", "gov.texas.gov"]},
+            "eu_comp": {"enabled": True, "name": "EU 집행위", "weight": 4, "sites": ["ec.europa.eu"],
+                        "extra": "(merger OR antitrust OR competition OR subsidy OR tariff OR investigation)"},
+            "china_gov": {"enabled": True, "name": "중국 정부 발표", "weight": 4, "lang": "zh", "sites": [
+                "gov.cn", "miit.gov.cn", "mofcom.gov.cn", "ndrc.gov.cn", "samr.gov.cn", "customs.gov.cn"],
+                "priorities": ["high", "mid"]},
+            "kr_gov": {"enabled": True, "name": "한국 정부 보도자료", "weight": 2, "feeds": [
+                {"name": "산업통상자원부", "url": "https://www.korea.kr/rss/dept_motie.xml"},
+                {"name": "국토교통부", "url": "https://www.korea.kr/rss/dept_molit.xml"},
+                {"name": "환경부", "url": "https://www.korea.kr/rss/dept_me.xml"},
+                {"name": "기획재정부", "url": "https://www.korea.kr/rss/dept_moef.xml"},
+                {"name": "공정거래위원회", "url": "https://www.korea.kr/rss/dept_ftc.xml"}],
+                # 이 단어가 제목·요약에 있는 보도자료만 남긴다(추적 대상 기업명이 나와도 남김)
+                "terms": ["자동차", "완성차", "전기차", "수소차", "친환경차", "미래차", "자율주행", "모빌리티",
+                          "배터리", "이차전지", "리콜", "결함", "부품", "타이어", "충전", "관세", "자동차산업"]},
+            # ── 기업 발표
             "pr_wire": {"enabled": True, "name": "PR 와이어·파트너사 발표", "weight": 3, "sites": [
                 "prnewswire.com", "businesswire.com", "globenewswire.com", "accessnewswire.com",
                 "newsfilecorp.com", "hyundainews.com", "kiamedia.com", "news.gm.com", "media.ford.com",
                 "stellantis.com"]},
-            "eu_comp": {"enabled": True, "name": "EU 경쟁총국", "weight": 4, "sites": ["ec.europa.eu"],
-                        "extra": "(merger OR antitrust OR competition OR subsidy)"},
+            # ── 언론
             "local_media": {"enabled": True, "name": "현지 지방 매체", "weight": 3, "by_location": True,
                             "priorities": ["high"], "max_queries": 24},
             "trade_media": {"enabled": True, "name": "해외 업계 전문지", "weight": 2, "sites": [
                 "autonews.com", "electrive.com", "insideevs.com", "electrek.co", "wardsauto.com",
                 "automotivedive.com", "supplychaindive.com", "freightwaves.com", "just-auto.com",
                 "batteryindustry.net"]},
+            "global_media": {"enabled": True, "name": "해외 주요 언론", "weight": 2, "priorities": ["high"],
+                             "max_queries": 6},
             "china_media": {"enabled": True, "name": "중국 매체", "weight": 3, "lang": "zh",
                             "priorities": ["high", "mid"]},
             "feeds": {"enabled": True, "name": "사용자 RSS", "weight": 3, "list": []},
@@ -235,7 +264,8 @@ DEFAULTS = {
     "anthropic_api_key": "",
     "gemini_api_key": "",
     # Claude 연결 방식: api(API 키·사용량 과금) / subscription(Claude Code 구독 로그인)
-    "claude_auth": "api",     # CourtListener(미국 법원) API 토큰
+    "claude_auth": "api",
+    "courtlistener_token": "",     # CourtListener(미국 법원) API 토큰
     "sec_email": "",               # SEC가 요구하는 접속자 연락처(이메일)
     "telegram_bot_token": "",
     "telegram_chat_id": "",

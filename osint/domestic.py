@@ -11,7 +11,8 @@ from balje import collect
 from . import watchlist as wl
 
 CHANNEL_TERM = {"courts": "미국 소송", "nhtsa": "미국 리콜", "eu_comp": "EU", "china_media": "중국",
-                "gov_press": "주정부", "sec": "", "pr_wire": "", "local_media": "", "trade_media": "", "feeds": ""}
+                "gov_press": "주정부", "sec": "", "pr_wire": "", "local_media": "", "trade_media": "", "feeds": "",
+                "fed_register": "미국", "us_federal": "미국", "china_gov": "중국", "kr_gov": "", "global_media": ""}
 
 
 def ko_short(entity):

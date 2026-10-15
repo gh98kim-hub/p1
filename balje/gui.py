@@ -18,6 +18,8 @@ from osint.watchlist import WatchlistError
 
 from . import pipeline
 from .llm import claude_code_status, open_login_window
+from . import board as board_mod
+from .dashboard import Dashboard
 from .viewer import ReportViewer
 
 INSTALL_HELP = """구독(Pro·Max)으로 쓰려면 Anthropic의 공식 프로그램 'Claude Code'가 필요합니다.
@@ -287,14 +289,22 @@ class App(tk.Tk):
 
     def _build_osint(self, tab):
         ocfg = self.config_data["osint"]
-        chf = ttk.LabelFrame(tab, text="수집 채널 (해외 1차 출처)", padding=10)
+        from osint.classify import CHANNEL_KIND, KIND_ORDER, KINDS
+        chf = ttk.LabelFrame(tab, text="수집 채널", padding=(10, 6))
         chf.pack(fill="x")
         self.channel_vars = {}
-        for i, (key, ch) in enumerate(ocfg["channels"].items()):
-            var = tk.BooleanVar(value=ch.get("enabled", True))
-            ttk.Checkbutton(chf, text=ch.get("name", key), variable=var).grid(
-                row=i // 4, column=i % 4, sticky="w", padx=(0, 14), pady=2)
-            self.channel_vars[key] = var
+        for r, kind in enumerate(KIND_ORDER):
+            ttk.Label(chf, text=KINDS[kind], foreground="#1d3d6e", font=(FONT[0], FONT[1], "bold")).grid(
+                row=r, column=0, sticky="nw", padx=(0, 12), pady=3)
+            row = ttk.Frame(chf)
+            row.grid(row=r, column=1, sticky="w", pady=3)
+            keys = [k for k in ocfg["channels"] if CHANNEL_KIND.get(k, "media") == kind]
+            for i, key in enumerate(keys):
+                ch = ocfg["channels"][key]
+                var = tk.BooleanVar(value=ch.get("enabled", True))
+                ttk.Checkbutton(row, text=ch.get("name", key), variable=var).grid(
+                    row=i // 5, column=i % 5, sticky="w", padx=(0, 14), pady=1)
+                self.channel_vars[key] = var
         opt = ttk.Frame(tab)
         opt.pack(fill="x", pady=(10, 0))
         ttk.Label(opt, text="최근").pack(side="left")
@@ -313,10 +323,11 @@ class App(tk.Tk):
         btn = ttk.Button(bar, text="레이더 실행", command=self.run_radar)
         btn.pack(side="right")
         ttk.Button(bar, text="결과 폴더", command=self.open_output).pack(side="right", padx=6)
-        ttk.Button(bar, text="리포트 열기", command=lambda: self.open_latest("OSINT리포트_*.md")).pack(side="right")
+        ttk.Button(bar, text="결과 보기", command=lambda: self.open_latest("OSINT결과_*.json", "OSINT리포트_*.md")).pack(side="right")
         self.run_buttons.append(btn)
         ttk.Label(tab, foreground="#666", justify="left",
-                  text="SEC·NHTSA·뉴스 채널은 키 없이 동작합니다. 미국 법원은 [설정]의 CourtListener 토큰을 씁니다.\n"
+                  text="정부·공공 자료(SEC·법원·NHTSA·연방관보·주정부·EU·중국·한국 정부), 기업 발표, 언론을 나눠 모읍니다.\n"
+                       "결과 화면 왼쪽에서 종류별로 골라 보고, [원문 열기]로 1차 자료를 엽니다. 미국 법원은 CourtListener 토큰을 씁니다.\n"
                        "국내 보도 건수는 네이버 키가 있을 때 자동 검색합니다. '선제 보도 후보'는 확인 취재 뒤 판단하세요.").pack(
             anchor="w", pady=(8, 0))
         self.auto_job = None
@@ -330,7 +341,7 @@ class App(tk.Tk):
         ttk.Label(bar, text="AI").pack(side="left")
         self._ai_combo(bar).pack(side="left", padx=4)
         ttk.Label(bar, foreground="#666", text="(AI 없이도 추적 대상 목록으로 1차 출처 후보는 찾습니다)").pack(side="left", padx=6)
-        ttk.Button(bar, text="역추적 리포트 열기", command=lambda: self.open_latest("역추적_*.md")).pack(side="right", padx=6)
+        ttk.Button(bar, text="결과 보기", command=lambda: self.open_latest("역추적결과_*.json", "역추적_*.md")).pack(side="right", padx=6)
         btn = ttk.Button(bar, text="역추적 실행", command=self.run_reverse)
         btn.pack(side="right")
         self.run_buttons.append(btn)
@@ -390,13 +401,10 @@ class App(tk.Tk):
         return dict(AI_CHOICES).get(self.ai_choice.get())
 
     def open_markdown(self):
-        if not self.last_md:
-            files = sorted(Path(self.config_data["output_dir"]).glob("발제노트_*.md"))
-            self.last_md = files[-1] if files else None
-        if not self.last_md:
-            messagebox.showinfo("발제 도우미", "아직 만든 발제 노트가 없습니다.")
-            return
-        self.show(self.last_md)
+        if self.last_md:
+            self.show(self.last_md)
+        else:
+            self.open_latest("발제결과_*.json", "발제노트_*.md")
 
     def open_output(self):
         out = Path(self.config_data["output_dir"])
@@ -482,9 +490,9 @@ class App(tk.Tk):
         on_done(result)
 
     def _done_notes(self, result):
-        self.last_html, self.last_md = result["html"], result["md"]
+        self.last_html, self.last_md = result["html"], result.get("json") or result["md"]
         self.log("완료. [결과 보기]로 다시 볼 수 있습니다.")
-        self.show(result["md"])
+        self.show(self.last_md)
 
     # ------------------------------------------------------------ OSINT
     def _watchlist_path(self):
@@ -534,23 +542,33 @@ class App(tk.Tk):
             self._schedule_auto()
 
     def show(self, path):
-        """결과를 프로그램 안 '결과 보기' 창으로 연다(링크는 눌러서 연다)."""
-        self.log(f"결과 보기: {Path(path).resolve()}")
-        ReportViewer(self, path, open_text=open_text, open_path=open_path)
+        """결과를 프로그램 안 결과 화면으로 연다. JSON은 분류·목록·상세 화면, 예전 마크다운은 문서 보기."""
+        path = Path(path)
+        if path.suffix.lower() == ".json":
+            try:
+                data = board_mod.load(path)
+            except (OSError, ValueError) as e:
+                messagebox.showerror("결과 보기", f"결과 파일을 읽지 못했습니다: {e}")
+                return
+            Dashboard(self, data, path, open_path=open_path, open_text=open_text)
+        else:
+            ReportViewer(self, path, open_text=open_text, open_path=open_path)
 
-    def open_latest(self, pattern):
-        files = sorted(Path(self.config_data["output_dir"]).glob(pattern), key=lambda p: p.stat().st_mtime)
-        if not files:
-            messagebox.showinfo("발제 도우미", "아직 만든 결과가 없습니다.")
-            return
-        self.show(files[-1])
+    def open_latest(self, *patterns):
+        """가장 최근 결과를 연다. 앞쪽 형식(결과 화면 JSON)을 우선한다."""
+        out = Path(self.config_data["output_dir"])
+        for pattern in patterns:
+            files = sorted(out.glob(pattern), key=lambda p: p.stat().st_mtime)
+            if files:
+                self.show(files[-1])
+                return
+        messagebox.showinfo("발제 도우미", "아직 만든 결과가 없습니다.")
 
     def _done_radar(self, result, auto):
-        self.log(f"레이더 완료: 후보 {len(result['cands'])}건")
-        self.log(f"리포트: {Path(result['md']).resolve()}")
-        self.log("[리포트 열기]로 다시 볼 수 있습니다.")
+        self.log(f"레이더 완료: 자료 {len(result['signals'])}건 · 발제 후보 {len(result['cands'])}건")
+        self.log("[결과 보기]로 다시 볼 수 있습니다.")
         if not auto:
-            self.show(result["md"])
+            self.show(result.get("json") or result["md"])
         self._schedule_auto()
 
     def _schedule_auto(self):
@@ -571,7 +589,7 @@ class App(tk.Tk):
         self._auto_running = False
         use_ai = bool(self._ai_provider())
         self._run_job(lambda cfg: reverse.run(text, cfg, log=self.log, use_ai=use_ai),
-                      lambda res: self.show(res["md"]))
+                      lambda res: self.show(res.get("json") or res["md"]))
 
 
 def selftest(result_file):
@@ -596,6 +614,10 @@ def selftest(result_file):
         v = ReportViewer(app2, r["md"])
         v.update()
         lines.append(f"viewer ok {len(v.links)} links")
+        d = Dashboard(app2, board_mod.load(r["json"]), r["json"])
+        d.update()
+        lines.append(f"dashboard ok {len(d.table.get_children())} rows in {d.current_group}, "
+                     f"{len(d._widgets)} buttons")
         app2.destroy()
         from osint import radar, reverse  # noqa: F401 - exe에 포함됐는지 확인
         w = osint_watchlist.load()
@@ -657,13 +679,44 @@ def _osint_net_checks():
             ch = load_config("none.json")["osint"]["channels"][key]
             q = news.build_queries(ch, w, 7)
             sigs = news.search_channel(key, dict(ch, max_queries=2), w, 7, sleep=0.2)
-            return f"{len(q)} queries; {len(sigs)} items from 2; first={sigs[0].title[:60] if sigs else '-'}"
+            from osint.classify import kind_of
+            kinds = {}
+            for x in sigs:
+                kinds[kind_of(x)] = kinds.get(kind_of(x), 0) + 1
+            doms = sorted({x.meta.get("domain", "?") for x in sigs})[:6]
+            return (f"{len(q)} queries; {len(sigs)} items from 2; kinds={kinds}; domains={doms}; "
+                    f"first={sigs[0].title[:60] if sigs else '-'}")
         return f
+
+    def fr(term):
+        def f():
+            from osint.sources import federal_register
+            sigs = federal_register.search(term, now - timedelta(days=60), 20)
+            return f"{len(sigs)} docs; first={sigs[0].published.date() if sigs else '-'} {sigs[0].title[:60] if sigs else '-'}"
+        return f
+
+    def krgov():
+        from balje.config import load_config
+        ch = load_config("none.json")["osint"]["channels"]["kr_gov"]
+        res = []
+        for f in ch["feeds"]:
+            try:
+                got = news.read_feeds([f], "kr_gov")
+                res.append(f"{f['name']} {len(got)}건" + (f" ({got[0].published.date() if got[0].published else '?'} "
+                                                          f"{got[0].title[:30]})" if got else ""))
+            except Exception as e:  # noqa: BLE001
+                res.append(f"{f['name']} ERROR {e}")
+        return "; ".join(res)
 
     rec("sec", sec)
     rec("nhtsa", nh)
     rec("courts(no token)", cl)
-    for key in ("gov_press", "pr_wire", "eu_comp", "local_media", "china_media"):
+    rec("fed_register single", fr('"Hyundai"'))
+    rec("fed_register OR", fr('"Hyundai" | "Kia"'))
+    rec("fed_register topic", fr("lithium-ion batteries"))
+    rec("kr_gov feeds", krgov)
+    for key in ("us_federal", "gov_press", "eu_comp", "china_gov", "pr_wire", "local_media", "global_media",
+                "china_media"):
         rec(key, gn(key))
     return out
 

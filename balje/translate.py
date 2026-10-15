@@ -19,7 +19,9 @@ USER = """아래 항목의 title과 text를 한국어로 옮겨 JSON으로만 �
 
 
 def needs_translation(text):
-    return bool(text) and not HANGUL.search(text)
+    """한글이 없으면 번역 대상. 앞의 [리콜 번호]·[소송 기록] 같은 한국어 말머리는 빼고 본다."""
+    body = re.sub(r"^\s*(\[[^\]]*\]\s*)+", "", text or "")
+    return bool(body) and not HANGUL.search(body)
 
 
 def translate_items(items, config, log=print, chunk=40):

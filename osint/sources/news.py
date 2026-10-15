@@ -2,6 +2,7 @@
 현지 지방지, 업계 전문지, 중국 매체를 찾는다. 사용자가 넣은 RSS 피드도 여기서 읽는다(키 불필요)."""
 
 import time
+import urllib.parse
 import xml.etree.ElementTree as ET
 
 from balje.collect import _http_get, clean_text, fetch_google_news, normalize_link, parse_date
@@ -13,6 +14,11 @@ LANG = {
     "en": ("en-US", "US", "US:en"),
     "zh": ("zh-CN", "CN", "CN:zh-Hans"),
 }
+
+
+def domain_of(url):
+    host = urllib.parse.urlparse(url or "").netloc.lower()
+    return host[4:] if host.startswith("www.") else host
 
 
 def _quote(term):
@@ -70,14 +76,15 @@ def search_channel(key, channel, watch, days, sleep=0.3, log=None):
                 continue
             seen.add(a.link)
             out.append(Signal(channel=key, title=a.title, url=a.link, published=a.published,
-                              source=a.press, text=a.description, lang=channel.get("lang", "en"), query=q))
+                              source=a.press, text=a.description, lang=channel.get("lang", "en"), query=q,
+                              meta={"domain": domain_of(a.source_url)} if a.source_url else {}))
         time.sleep(sleep)
     return out
 
 
 # ---------------------------------------------------------------- 사용자 RSS 피드
 
-def parse_feed(xml_bytes, key, name):
+def parse_feed(xml_bytes, key, name, lang="en"):
     root = ET.fromstring(xml_bytes)
     out = []
     atom = "{http://www.w3.org/2005/Atom}"
@@ -85,13 +92,16 @@ def parse_feed(xml_bytes, key, name):
         out.append(Signal(channel=key, title=clean_text(item.findtext("title")),
                           url=normalize_link(item.findtext("link")),
                           published=parse_date(item.findtext("pubDate") or item.findtext("{http://purl.org/dc/elements/1.1/}date")),
-                          source=name, text=clean_text(item.findtext("description"))[:600]))
+                          source=name, text=clean_text(item.findtext("description"))[:600], lang=lang))
     for entry in root.iter(f"{atom}entry"):
         link = entry.find(f"{atom}link")
         out.append(Signal(channel=key, title=clean_text(entry.findtext(f"{atom}title")),
                           url=normalize_link(link.get("href") if link is not None else ""),
                           published=parse_date(entry.findtext(f"{atom}updated") or entry.findtext(f"{atom}published")),
-                          source=name, text=clean_text(entry.findtext(f"{atom}summary"))[:600]))
+                          source=name, text=clean_text(entry.findtext(f"{atom}summary"))[:600], lang=lang))
+    for s in out:
+        if s.url:
+            s.meta["domain"] = domain_of(s.url)
     return out
 
 
@@ -100,7 +110,7 @@ def read_feeds(feeds, key="feeds", log=None):
     for f in feeds:
         try:
             raw, _ = _http_get(f["url"])
-            out += parse_feed(raw, key, f.get("name", f["url"]))
+            out += parse_feed(raw, key, f.get("name", f["url"]), f.get("lang", "en"))
         except Exception as e:  # noqa: BLE001
             if log:
                 log(f"[RSS {f.get('name', f['url'])}] 실패: {e}")

@@ -1,0 +1,11 @@
+{"count": 2, "results": [
+ {"title": "Certain Fictional Battery Cells From Testland: Initiation of Antidumping Duty Investigation",
+  "type": "Notice", "abstract": "The Department is initiating an investigation of fictional battery cells produced by Bolt Cells.",
+  "document_number": "2026-99901", "html_url": "https://www.federalregister.gov/documents/2026/10/12/2026-99901/fictional",
+  "publication_date": "2026-10-12", "agencies": [{"name": "International Trade Administration", "raw_name": "ITA"}],
+  "excerpts": "<span class=\"match\">Bolt Cells</span> fictional"},
+ {"title": "Fictional Motor Vehicle Safety Standard Update", "type": "Proposed Rule", "abstract": null,
+  "document_number": "2026-99902", "html_url": "https://www.federalregister.gov/documents/2026/10/13/2026-99902/fictional",
+  "publication_date": "2026-10-13", "agencies": [{"name": "National Highway Traffic Safety Administration"}],
+  "excerpts": "proposed <span class=\"match\">standard</span>"}
+]}

@@ -123,6 +123,8 @@ def run(article_or_url, config, log=print, use_ai=True, out_dir=None, now=None):
         for i, s in enumerate(sources):
             if str(i) in tr:
                 s.meta["ko_title"] = tr[str(i)]["title"]
+                if tr[str(i)].get("summary"):
+                    s.meta["ko_text"] = tr[str(i)]["summary"]
     ai = {}
     for n in names:
         label, fn = PROVIDERS[n]
@@ -137,5 +139,10 @@ def run(article_or_url, config, log=print, use_ai=True, out_dir=None, now=None):
     d = {"now": now, "url": url, "article": article, "sources": sources, "ai": ai, "extract": ext}
     md_path = out / f"역추적_{stamp}.md"
     md_path.write_text(report.reverse_markdown(d), encoding="utf-8")
-    log(f"저장: {md_path}")
-    return {"md": md_path, "sources": sources, "ai": ai, "extract": ext}
+    from . import board
+    json_path = out / f"역추적결과_{stamp}.json"
+    bd = board.reverse_board(d, config)
+    bd["files"] = {"md": md_path.name}
+    board.save(bd, json_path)
+    log(f"저장: {json_path}")
+    return {"md": md_path, "json": json_path, "sources": sources, "ai": ai, "extract": ext}

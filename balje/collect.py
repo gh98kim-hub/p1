@@ -50,6 +50,7 @@ class Article:
     lang: str = "ko"       # "en"이면 외신
     body: str = ""         # 수집한 본문(발제 후보만)
     title_ko: str = ""     # 외신 제목 번역
+    source_url: str = ""   # 구글 뉴스가 밝힌 출처 사이트(정부·기업·언론 구분용)
 
     def to_dict(self):
         d = asdict(self)
@@ -173,6 +174,7 @@ def parse_google_news(xml_bytes, query=""):
         title = clean_text(item.findtext("title"))
         source_el = item.find("source")
         press = clean_text(source_el.text) if source_el is not None and source_el.text else ""
+        source_url = (source_el.get("url") or "") if source_el is not None else ""
         # 구글 뉴스 제목 끝의 ' - 매체명' 제거
         if press and title.endswith(" - " + press):
             title = title[: -len(press) - 3].strip()
@@ -188,6 +190,7 @@ def parse_google_news(xml_bytes, query=""):
             keyword=query,
             source="google_news",
             lang="en",
+            source_url=source_url,
         ))
     return articles
 

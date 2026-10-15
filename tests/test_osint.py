@@ -231,7 +231,8 @@ def _config(tmp_path):
     chs["gov_press"]["sites"] = ["a.gov"]
     chs["nhtsa"]["makes"] = {"ACME": "가상자동차"}
     chs["nhtsa"]["model_years"] = 1
-    for k in ("pr_wire", "eu_comp", "trade_media", "china_media"):
+    for k in ("pr_wire", "eu_comp", "trade_media", "china_media", "fed_register", "us_federal", "china_gov",
+              "kr_gov", "global_media"):
         chs[k]["enabled"] = False
     chs["feeds"]["list"] = []
     return cfg
@@ -403,7 +404,7 @@ def test_radar_translates_foreign_titles(tmp_path, fake_net, monkeypatch):
     res = radar.run(_config(tmp_path), log=lambda m: None, out_dir=tmp_path / "out", now=NOW)
     md = res["md"].read_text(encoding="utf-8")
     assert calls and calls[0][2] == "low"            # AI 발제문을 꺼도 번역은 한다(가벼운 설정)
-    assert "번역: Claude로 외신" in md
+    assert "번역: Claude로 외국어 자료" in md
     assert "번역:Governor announces A (원문: Governor announces Acme Motors expansion in Oak County)" in md
 
 
@@ -411,7 +412,7 @@ def test_radar_without_key_says_why_not_translated(tmp_path, fake_net, monkeypat
     from balje import translate as tmod
     monkeypatch.setattr(tmod, "available_provider", lambda config: None)
     res = radar.run(_config(tmp_path), log=lambda m: None, out_dir=tmp_path / "out", now=NOW)
-    assert "Claude 또는 Gemini API 키가 있어야" in res["md"].read_text(encoding="utf-8")
+    assert "Claude 구독 로그인이나 Claude·Gemini 키가 있어야" in res["md"].read_text(encoding="utf-8")
 
 
 def test_translate_skips_korean_and_bad_response(monkeypatch):

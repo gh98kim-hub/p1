@@ -107,7 +107,7 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
         if label:
             translation = f"번역: {label}로 외신 제목 {len(tr)}건"
         elif any(needs_translation(a.title) for a in foreign_arts):
-            translation = "번역: 안 함(설정에 Claude 또는 Gemini API 키가 있어야 외신 제목을 번역합니다)"
+            translation = "번역: 안 함(Claude 구독 로그인이나 Claude·Gemini 키가 있어야 외신 제목을 번역합니다)"
 
     # 3) AI 발제안(선택)
     ai_text = None
@@ -141,6 +141,11 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
     html_path.write_text(report.to_html(shown, notes, now, ai_text, top, meta), encoding="utf-8")
     if has_body:
         body_path.write_text(report.bodies_markdown(shown, notes, now), encoding="utf-8")
+    from . import board
+    json_path = out / f"발제결과_{stamp}.json"
+    bd = board.notes_board(shown, notes, now, ai_text, top, meta)
+    bd["files"] = {"md": md_path.name, "html": html_path.name}
+    board.save(bd, json_path)
     if save_raw:
         collect.save_articles(articles, out / f"기사원본_{stamp}.json")
     if use_history:
@@ -150,7 +155,7 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
     for rank, c in enumerate(shown[:top], 1):
         log(f" {rank:>2}. [{c.score:>5}] {c.headline} ({len(c.articles)}건/{len(c.press)}곳)")
     log(f"\n저장: {md_path}\n      {html_path}" + (f"\n      {body_path}" if has_body else ""))
-    return {"md": md_path, "html": html_path, "body_md": body_path if has_body else None,
+    return {"md": md_path, "html": html_path, "json": json_path, "body_md": body_path if has_body else None,
             "clusters": shown, "ai_text": ai_text}
 
 
