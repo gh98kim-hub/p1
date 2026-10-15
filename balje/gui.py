@@ -565,11 +565,17 @@ def _osint_net_checks():
         return f"{len(sigs)} hits; first={sigs[0].title[:70] if sigs else '-'}; keys={sorted(raw)[:6]}"
 
     def nh():
+        import urllib.error
         ms = nhtsa.models("hyundai", now.year)
-        spaced = next((m for m in ms if " " in m), ms[0] if ms else "")
-        recs = nhtsa.recalls_for("hyundai", spaced, now.year) if ms else []
-        return (f"{len(ms)} models; {len(recs)} recalls for {spaced or '-'}; "
-                f"date sample={recs[0].get('ReportReceivedDate') if recs else '-'}")
+        res = [f"{len(ms)} models"]
+        for m in ms[:4]:
+            try:
+                recs = nhtsa.recalls_for("hyundai", m, now.year)
+                res.append(f"{m}: {len(recs)} recalls"
+                           + (f" (date sample {recs[0].get('ReportReceivedDate')})" if recs else ""))
+            except urllib.error.HTTPError as e:
+                res.append(f"{m}: HTTP {e.code} {e.read(160).decode('utf-8', 'replace')!r}")
+        return "; ".join(res)
 
     def cl():
         sigs = courts.search('"Hyundai Motor"', os.environ.get("BALJE_CL_TOKEN", ""), now - timedelta(days=60), "r")
