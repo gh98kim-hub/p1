@@ -14,6 +14,9 @@ import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from osint import watchlist as osint_watchlist
+from osint.watchlist import WatchlistError
+
 from . import pipeline
 from .config import _merge, brands_from_names, load_config, save_config
 
@@ -73,6 +76,10 @@ class SettingsDialog(tk.Toplevel):
         ("gemini_api_key", "Gemini API 키", True),
         ("ai.gemini_model", "Gemini 모델", False),
         ("my_press", "우리 매체 이름", False),
+        ("courtlistener_token", "CourtListener 토큰(미국 법원)", True),
+        ("sec_email", "SEC 연락처 이메일", False),
+        ("telegram_bot_token", "텔레그램 봇 토큰(선택)", True),
+        ("telegram_chat_id", "텔레그램 채팅 ID(선택)", False),
     ]
 
     def __init__(self, master, config):
@@ -97,6 +104,7 @@ class SettingsDialog(tk.Toplevel):
         self.brands_box.grid(row=row, column=1, sticky="we", padx=(8, 0), pady=4)
         ttk.Label(frm, foreground="#666", justify="left",
                   text="Gemini 모델 예: gemini-pro-latest(최신 Pro), gemini-3.8-flash(빠르고 저렴)\n"
+                       "SEC는 자동 접속자에게 연락처를 요구합니다. 비워두면 SEC 공시 수집이 막힐 수 있습니다.\n"
                        "키는 이 프로그램 폴더의 config.json에 저장됩니다. 폴더째 공유하지 마세요.").grid(
             row=row + 1, column=0, columnspan=2, sticky="w", pady=(8, 0))
         btns = ttk.Frame(frm)
@@ -148,8 +156,17 @@ class App(tk.Tk):
     def _build(self):
         root = ttk.Frame(self, padding=14)
         root.pack(fill="both", expand=True)
+        nb = ttk.Notebook(root)
+        nb.pack(fill="x")
+        tab1 = ttk.Frame(nb, padding=10)
+        nb.add(tab1, text="국내 발제 노트")
+        tab2 = ttk.Frame(nb, padding=10)
+        nb.add(tab2, text="OSINT 레이더")
+        tab3 = ttk.Frame(nb, padding=10)
+        nb.add(tab3, text="역추적·팩트체크")
+        self.run_buttons = []
 
-        src = ttk.LabelFrame(root, text="기사 가져오기", padding=10)
+        src = ttk.LabelFrame(tab1, text="기사 가져오기", padding=10)
         src.pack(fill="x")
         self.source = tk.StringVar(value="naver")
         ttk.Radiobutton(src, text="네이버에서 검색", value="naver", variable=self.source).grid(row=0, column=0, sticky="w")
@@ -185,7 +202,7 @@ class App(tk.Tk):
         self.files_label.grid(row=2, column=2, sticky="w", padx=4, pady=(10, 0))
         src.columnconfigure(2, weight=1)
 
-        extra = ttk.LabelFrame(root, text="추가 자료 · AI", padding=10)
+        extra = ttk.LabelFrame(tab1, text="추가 자료 · AI", padding=10)
         extra.pack(fill="x", pady=(10, 0))
         ttk.Button(extra, text="자료 폴더 선택…", command=self.pick_materials).grid(row=0, column=0, sticky="w")
         self.mat_label = ttk.Label(extra, text="(보도자료·메모 .txt/.md, 선택)", foreground="#666")
@@ -199,7 +216,7 @@ class App(tk.Tk):
             row=1, column=1, sticky="w", padx=6, pady=(8, 0))
         extra.columnconfigure(1, weight=1)
 
-        bar = ttk.Frame(root)
+        bar = ttk.Frame(tab1)
         bar.pack(fill="x", pady=(12, 0))
         ttk.Button(bar, text="설정", command=self.open_settings).pack(side="left")
         ttk.Button(bar, text="샘플로 시험", command=self.run_sample).pack(side="left", padx=6)
@@ -207,11 +224,68 @@ class App(tk.Tk):
         ttk.Button(bar, text="마크다운 열기", command=self.open_markdown).pack(side="left", padx=6)
         self.run_btn = ttk.Button(bar, text="발제 노트 만들기", command=self.run_main)
         self.run_btn.pack(side="right")
-        self.progress = ttk.Progressbar(bar, mode="indeterminate", length=120)  # 실행 중에만 표시
+        self.run_buttons.append(self.run_btn)
+        self._build_osint(tab2)
+        self._build_reverse(tab3)
+
+        status = ttk.Frame(root)
+        status.pack(fill="x", pady=(8, 0))
+        self.progress = ttk.Progressbar(status, mode="indeterminate", length=160)  # 실행 중에만 표시
 
         self.log_box = tk.Text(root, height=14, wrap="word", font=FONT, state="disabled",
                                relief="solid", borderwidth=1)
-        self.log_box.pack(fill="both", expand=True, pady=(12, 0))
+        self.log_box.pack(fill="both", expand=True, pady=(8, 0))
+
+    def _ai_combo(self, parent):
+        return ttk.Combobox(parent, textvariable=self.ai_choice, values=[label for label, _ in AI_CHOICES],
+                            state="readonly", width=22)
+
+    def _build_osint(self, tab):
+        ocfg = self.config_data["osint"]
+        chf = ttk.LabelFrame(tab, text="수집 채널 (해외 1차 출처)", padding=10)
+        chf.pack(fill="x")
+        self.channel_vars = {}
+        for i, (key, ch) in enumerate(ocfg["channels"].items()):
+            var = tk.BooleanVar(value=ch.get("enabled", True))
+            ttk.Checkbutton(chf, text=ch.get("name", key), variable=var).grid(
+                row=i // 4, column=i % 4, sticky="w", padx=(0, 14), pady=2)
+            self.channel_vars[key] = var
+        opt = ttk.Frame(tab)
+        opt.pack(fill="x", pady=(10, 0))
+        ttk.Label(opt, text="최근").pack(side="left")
+        self.osint_days = tk.StringVar(value=str(ocfg.get("lookback_days", 7)))
+        ttk.Spinbox(opt, from_=1, to=60, textvariable=self.osint_days, width=4).pack(side="left", padx=4)
+        ttk.Label(opt, text="일 · 자동 실행").pack(side="left")
+        self.osint_auto = tk.StringVar(value=str(ocfg.get("auto_minutes", 0)))
+        ttk.Spinbox(opt, from_=0, to=1440, increment=30, textvariable=self.osint_auto, width=5).pack(side="left", padx=4)
+        ttk.Label(opt, text="분마다(0=끔) · AI").pack(side="left")
+        self._ai_combo(opt).pack(side="left", padx=4)
+        bar = ttk.Frame(tab)
+        bar.pack(fill="x", pady=(10, 0))
+        ttk.Button(bar, text="추적 대상 편집", command=self.edit_watchlist).pack(side="left")
+        ttk.Button(bar, text="추적 대상 다시 읽기", command=self.reload_watchlist).pack(side="left", padx=6)
+        ttk.Button(bar, text="설정", command=self.open_settings).pack(side="left")
+        btn = ttk.Button(bar, text="레이더 실행", command=self.run_radar)
+        btn.pack(side="right")
+        self.run_buttons.append(btn)
+        ttk.Label(tab, foreground="#666", justify="left",
+                  text="SEC·NHTSA·뉴스 채널은 키 없이 동작합니다. 미국 법원은 [설정]의 CourtListener 토큰을 씁니다.\n"
+                       "국내 보도 건수는 네이버 키가 있을 때 자동 검색합니다. '선제 보도 후보'는 확인 취재 뒤 판단하세요.").pack(
+            anchor="w", pady=(8, 0))
+        self.auto_job = None
+
+    def _build_reverse(self, tab):
+        ttk.Label(tab, text="타사 기사 URL 또는 기사 본문을 붙여 넣으세요").pack(anchor="w")
+        self.reverse_box = tk.Text(tab, height=7, wrap="word", font=FONT, relief="solid", borderwidth=1)
+        self.reverse_box.pack(fill="x", pady=(4, 0))
+        bar = ttk.Frame(tab)
+        bar.pack(fill="x", pady=(8, 0))
+        ttk.Label(bar, text="AI").pack(side="left")
+        self._ai_combo(bar).pack(side="left", padx=4)
+        ttk.Label(bar, foreground="#666", text="(AI 없이도 추적 대상 목록으로 1차 출처 후보는 찾습니다)").pack(side="left", padx=6)
+        btn = ttk.Button(bar, text="역추적 실행", command=self.run_reverse)
+        btn.pack(side="right")
+        self.run_buttons.append(btn)
 
     # ------------------------------------------------------------ 동작
     def log(self, msg):
@@ -312,10 +386,17 @@ class App(tk.Tk):
                     overrides={"brands": sample_cfg["brands"], "sort": SORT_CHOICES.get(self.sort.get(), "latest")})
 
     def _start(self, kwargs, overrides=None):
+        def job(cfg):
+            return pipeline.run(cfg, log=self.log, **kwargs)
+        self._run_job(job, self._done_notes, overrides)
+
+    def _run_job(self, job, on_done, overrides=None):
+        """작업을 별도 스레드로 돌리고 끝나면 on_done(result)을 창 스레드에서 부른다."""
         if self.worker and self.worker.is_alive():
-            return
-        self.run_btn.configure(state="disabled")
-        self.progress.pack(side="right", padx=8)
+            return False
+        for b in self.run_buttons:
+            b.configure(state="disabled")
+        self.progress.pack(side="right")
         self.progress.start(12)
         provider = self._ai_provider() or "claude"  # tk 변수는 작업 스레드 밖에서 읽는다
         self.log("─" * 30)
@@ -324,29 +405,108 @@ class App(tk.Tk):
             try:
                 cfg = _merge(self.config_data, overrides or {})
                 cfg["ai"] = dict(cfg["ai"], provider=provider)
-                result = pipeline.run(cfg, log=self.log, **kwargs)
-                self.after(0, self._done, result, None)
-            except pipeline.BaljeError as e:
-                self.after(0, self._done, None, str(e))
+                result = job(cfg)
+                self.after(0, self._finish, on_done, result, None)
+            except (pipeline.BaljeError, RuntimeError, WatchlistError) as e:
+                self.after(0, self._finish, on_done, None, str(e))
             except Exception:  # 예상 못 한 오류도 창에 보여준다
-                self.after(0, self._done, None, traceback.format_exc())
+                self.after(0, self._finish, on_done, None, traceback.format_exc())
 
         self.worker = threading.Thread(target=work, daemon=True)
         self.worker.start()
+        return True
 
-    def _done(self, result, error):
+    def _finish(self, on_done, result, error):
         self.progress.stop()
         self.progress.pack_forget()
-        self.run_btn.configure(state="normal")
+        for b in self.run_buttons:
+            b.configure(state="normal")
         if error:
             self.log("오류: " + error)
-            messagebox.showerror("발제 도우미", error.splitlines()[-1] if error else "오류")
+            if not getattr(self, "_auto_running", False):
+                messagebox.showerror("발제 도우미", error.splitlines()[-1] if error else "오류")
             return
+        on_done(result)
+
+    def _done_notes(self, result):
         html_path = result["html"]
         self.last_html, self.last_md = html_path, result["md"]
         self.log("[마크다운 열기]로 정리본(.md)을 볼 수 있습니다.")
         self.log("완료. 브라우저로 발제 노트를 엽니다.")
         webbrowser.open(Path(html_path).resolve().as_uri())
+
+    # ------------------------------------------------------------ OSINT
+    def _watchlist_path(self):
+        return Path(self.config_data["osint"]["watchlist_file"])
+
+    def edit_watchlist(self):
+        p = osint_watchlist.ensure_file(self._watchlist_path())
+        self.log(f"추적 대상 파일: {p.resolve()} (고친 뒤 저장하고 [추적 대상 다시 읽기])")
+        open_text(p)
+
+    def reload_watchlist(self):
+        try:
+            w = osint_watchlist.load(osint_watchlist.ensure_file(self._watchlist_path()))
+        except WatchlistError as e:
+            messagebox.showerror("추적 대상", str(e))
+            return
+        by = {}
+        for e in w["entities"]:
+            by[e["priority"]] = by.get(e["priority"], 0) + 1
+        self.log(f"추적 대상 {len(w['entities'])}곳(high {by.get('high', 0)} · mid {by.get('mid', 0)} · "
+                 f"low {by.get('low', 0)}) · 지역 {len(w.get('locations', []))}곳 읽음")
+
+    def _save_osint_options(self):
+        try:
+            days = int(float(self.osint_days.get()))
+            auto = int(float(self.osint_auto.get()))
+        except ValueError:
+            messagebox.showwarning("OSINT", "기간·자동 실행 간격은 숫자로 넣으세요.")
+            return False
+        values = {"ai_choice": self._ai_provider(), "osint": {
+            "lookback_days": days, "auto_minutes": auto,
+            "channels": {k: {"enabled": v.get()} for k, v in self.channel_vars.items()}}}
+        save_config(values)
+        self.config_data = _merge(self.config_data, values)
+        return True
+
+    def run_radar(self, auto=False):
+        from osint import radar
+        if not auto and not self._save_osint_options():
+            return
+        self._auto_running = auto
+        use_ai = bool(self._ai_provider())
+        started = self._run_job(lambda cfg: radar.run(cfg, log=self.log, use_ai=use_ai),
+                                lambda res: self._done_radar(res, auto))
+        if not started and auto:
+            self.log("다른 작업이 진행 중이라 자동 실행을 다음으로 미룹니다.")
+            self._schedule_auto()
+
+    def _done_radar(self, result, auto):
+        self.log(f"레이더 완료: 후보 {len(result['cands'])}건")
+        if not auto:
+            webbrowser.open(Path(result["html"]).resolve().as_uri())
+        self._schedule_auto()
+
+    def _schedule_auto(self):
+        if self.auto_job:
+            self.after_cancel(self.auto_job)
+            self.auto_job = None
+        minutes = self.config_data["osint"].get("auto_minutes", 0)
+        if minutes and minutes > 0:
+            self.auto_job = self.after(int(minutes * 60000), lambda: self.run_radar(auto=True))
+            self.log(f"{minutes}분 뒤 레이더를 다시 실행합니다(창을 닫으면 멈춤).")
+
+    def run_reverse(self):
+        from osint import reverse
+        text = self.reverse_box.get("1.0", "end").strip()
+        if not text:
+            messagebox.showwarning("역추적", "기사 URL이나 본문을 넣으세요.")
+            return
+        self._auto_running = False
+        use_ai = bool(self._ai_provider())
+        self._run_job(lambda cfg: reverse.run(text, cfg, log=self.log, use_ai=use_ai),
+                      lambda res: webbrowser.open(Path(res["html"]).resolve().as_uri()))
 
 
 def selftest(result_file):
@@ -367,6 +527,9 @@ def selftest(result_file):
                          materials_dir=resource("samples/materials"), hours=0,
                          use_history=False, out_dir="selftest_out", log=lambda m: None)
         lines.append(f"pipeline ok {len(r['clusters'])}")
+        from osint import radar, reverse  # noqa: F401 - exe에 포함됐는지 확인
+        w = osint_watchlist.load()
+        lines.append(f"osint watchlist ok {len(w['entities'])} entities")
         if os.environ.get("BALJE_SELFTEST_NET") == "1":
             lines += _net_checks()
         code = 0
@@ -375,6 +538,57 @@ def selftest(result_file):
         code = 1
     Path(result_file).write_text("\n".join(lines), encoding="utf-8")
     return code
+
+
+def _osint_net_checks():
+    """OSINT 채널 실접속 결과를 기록한다(사이트 사정에 좌우되므로 실패해도 점검 실패로 보지 않음)."""
+    from datetime import datetime, timedelta, timezone
+
+    from osint import http as ohttp
+    from osint.sources import courts, news, nhtsa, sec_edgar
+    out = []
+    now = datetime.now(timezone.utc)
+    w = osint_watchlist.load()
+
+    def rec(label, fn):
+        try:
+            out.append(f"osint {label}: {fn()}")
+        except Exception as e:  # noqa: BLE001
+            out.append(f"osint {label}: ERROR {type(e).__name__}: {str(e)[:160]}")
+
+    def sec():
+        raw = ohttp.get_json(sec_edgar.FTS_URL, {"q": '"Hyundai Motor"', "dateRange": "custom",
+                                                  "startdt": (now - timedelta(days=60)).strftime("%Y-%m-%d"),
+                                                  "enddt": now.strftime("%Y-%m-%d")},
+                             sec_edgar.headers(os.environ.get("BALJE_SEC_EMAIL", "")))
+        sigs = sec_edgar.parse_fts(raw)
+        return f"{len(sigs)} hits; first={sigs[0].title[:70] if sigs else '-'}; keys={sorted(raw)[:6]}"
+
+    def nh():
+        ms = nhtsa.models("hyundai", now.year)
+        recs = nhtsa.recalls_for("hyundai", ms[0], now.year) if ms else []
+        return (f"{len(ms)} models; {len(recs)} recalls for {ms[0] if ms else '-'}; "
+                f"date sample={recs[0].get('ReportReceivedDate') if recs else '-'}")
+
+    def cl():
+        sigs = courts.search('"Hyundai Motor"', os.environ.get("BALJE_CL_TOKEN", ""), now - timedelta(days=60), "r")
+        return f"{len(sigs)} results; first={sigs[0].title[:70] if sigs else '-'}"
+
+    def gn(key):
+        def f():
+            from balje.config import load_config
+            ch = load_config("none.json")["osint"]["channels"][key]
+            q = news.build_queries(ch, w, 7)
+            sigs = news.search_channel(key, dict(ch, max_queries=2), w, 7, sleep=0.2)
+            return f"{len(q)} queries; {len(sigs)} items from 2; first={sigs[0].title[:60] if sigs else '-'}"
+        return f
+
+    rec("sec", sec)
+    rec("nhtsa", nh)
+    rec("courts(no token)", cl)
+    for key in ("gov_press", "pr_wire", "eu_comp", "local_media", "china_media"):
+        rec(key, gn(key))
+    return out
 
 
 def _net_checks():
@@ -407,6 +621,7 @@ def _net_checks():
     if not got:
         raise RuntimeError("google news: 결과 없음")
     lines.append(f"google news ok {len(got)} items, first: {got[0].press} | {got[0].title[:60]}")
+    lines += _osint_net_checks()
     # 본문 추출은 사이트 구조에 좌우되므로 결과만 기록한다(실패해도 점검 실패로 보지 않음)
     try:
         raw, cs = collect._http_get("https://news.naver.com/main/ranking/popularDay.naver")

@@ -6,6 +6,8 @@ on:
     paths:
       - "balje/**"
       - "app.py"
+      - "osint/**"
+      - "Balje.spec"
       - "style/**"
       - "samples/**"
       - "requirements.txt"
@@ -32,16 +34,13 @@ jobs:
         run: python -m pytest -q
 
       - name: exe 만들기
-        run: >
-          pyinstaller --noconfirm --onefile --windowed --name Balje
-          --add-data "style/house_style.md;style"
-          --add-data "samples;samples"
-          app.py
+        run: pyinstaller --noconfirm Balje.spec
 
       - name: exe 자체 점검(창·샘플 실행·HTTPS 연결)
         shell: pwsh
         env:
           BALJE_SELFTEST_NET: "1"
+          BALJE_SEC_EMAIL: "balje-osint-ci@users.noreply.github.com"
         run: |
           New-Item -ItemType Directory -Force st | Out-Null
           Copy-Item dist\Balje.exe st\

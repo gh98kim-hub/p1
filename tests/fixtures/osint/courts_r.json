@@ -1,0 +1,6 @@
+{"count": 1, "results": [
+  {"caseName": "Doe v. Acme Motors America, Inc.", "court": "District Court, N.D. Testland", "court_id": "tsnd",
+   "dateFiled": "2026-10-11", "docketNumber": "3:26-cv-01234", "docket_id": 555,
+   "docket_absolute_url": "/docket/555/doe-v-acme-motors-america-inc/", "suitNature": "Product Liability",
+   "cause": "28:1332 Diversity", "recap_documents": [{"snippet": "complaint alleging <mark>battery</mark> defect", "description": "Complaint"}]}
+]}

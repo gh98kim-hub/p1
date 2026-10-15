@@ -1,0 +1,1112 @@
+{
+  "_설명": [
+    "OSINT 레이더가 추적하는 기업·지역 목록이다. 메모장으로 고쳐 저장한 뒤 프로그램에서 [추적 대상 다시 읽기]를 누르면 반영된다.",
+    "entities: name(한국어 대표명), priority(high=단독 후보까지 / mid=후보 가능 / low=맥락용, 모자이크·역추적에만), ko/en/zh(기사·문서에서 알아보는 표기), exclude(무시할 비슷한 이름).",
+    "영문 표기는 단어 단위로 찾는다(Kia가 Nokia에 걸리지 않음). 대문자 약어는 대소문자까지 맞춰 찾는다.",
+    "locations: 모자이크(같은 기업·같은 지역 신호 묶기)와 국내 보도 검색에 쓴다. ko는 국내 검색어로 쓰는 짧은 지역명.",
+    "기본값은 공개 보도로 알려진 정보를 바탕으로 만든 초안이다. 법인명·지명은 확인 후 고쳐 쓴다."
+  ],
+  "entities": [
+    {
+      "name": "현대자동차",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대자동차",
+        "현대차",
+        "현대차그룹"
+      ],
+      "en": [
+        "Hyundai Motor",
+        "Hyundai Motor Company",
+        "Hyundai Motor America",
+        "Hyundai Motor Group",
+        "Hyundai Motor Manufacturing Alabama",
+        "HMMA",
+        "Hyundai Motor Group Metaplant America",
+        "HMGMA",
+        "Metaplant",
+        "Hyundai"
+      ],
+      "zh": [
+        "现代汽车",
+        "北京现代",
+        "现代汽车集团"
+      ],
+      "exclude": [
+        "HD Hyundai",
+        "Hyundai Heavy",
+        "Hyundai Mipo",
+        "Hyundai Samho",
+        "Hyundai Construction Equipment",
+        "Hyundai Doosan Infracore",
+        "Hyundai Electric",
+        "Hyundai Marine",
+        "Hyundai Department Store",
+        "Hyundai Card",
+        "Hyundai Capital",
+        "Hyundai Merchant Marine",
+        "Hyundai Elevator",
+        "Hyundai Oilbank",
+        "Hyundai Mobis",
+        "Hyundai Glovis",
+        "Hyundai WIA",
+        "Hyundai Transys",
+        "Hyundai Rotem",
+        "Hyundai Steel",
+        "Hyundai Engineering",
+        "Hyundai E&C"
+      ]
+    },
+    {
+      "name": "기아",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "기아",
+        "기아차"
+      ],
+      "en": [
+        "Kia Corporation",
+        "Kia America",
+        "Kia Georgia",
+        "Kia Motors",
+        "Kia"
+      ],
+      "zh": [
+        "起亚",
+        "悦达起亚",
+        "江苏悦达起亚"
+      ]
+    },
+    {
+      "name": "제네시스",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "제네시스"
+      ],
+      "en": [
+        "Genesis Motor",
+        "Genesis Motor America",
+        "Genesis GV60",
+        "Genesis GV70",
+        "Genesis GV80",
+        "Genesis G80",
+        "Genesis G90"
+      ],
+      "zh": [
+        "捷尼赛思"
+      ]
+    },
+    {
+      "name": "현대모비스",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대모비스"
+      ],
+      "en": [
+        "Hyundai Mobis",
+        "Mobis Alabama",
+        "Mobis North America",
+        "Mobis"
+      ],
+      "zh": [
+        "现代摩比斯"
+      ]
+    },
+    {
+      "name": "현대글로비스",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대글로비스"
+      ],
+      "en": [
+        "Hyundai Glovis",
+        "Glovis America",
+        "Glovis"
+      ],
+      "zh": [
+        "现代格罗唯视"
+      ]
+    },
+    {
+      "name": "현대위아",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대위아"
+      ],
+      "en": [
+        "Hyundai WIA"
+      ],
+      "zh": []
+    },
+    {
+      "name": "현대트랜시스",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대트랜시스"
+      ],
+      "en": [
+        "Hyundai Transys"
+      ],
+      "zh": []
+    },
+    {
+      "name": "현대로템",
+      "group": "현대차그룹",
+      "priority": "mid",
+      "ko": [
+        "현대로템"
+      ],
+      "en": [
+        "Hyundai Rotem"
+      ],
+      "zh": []
+    },
+    {
+      "name": "현대제철",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대제철"
+      ],
+      "en": [
+        "Hyundai Steel"
+      ],
+      "zh": [
+        "现代制铁"
+      ],
+      "note": "미국 루이지애나 제철소 계획 관련 신호 추적"
+    },
+    {
+      "name": "현대건설·현대엔지니어링",
+      "group": "현대차그룹",
+      "priority": "mid",
+      "ko": [
+        "현대건설·현대엔지니어링",
+        "현대건설",
+        "현대엔지니어링"
+      ],
+      "en": [
+        "Hyundai Engineering & Construction",
+        "Hyundai E&C",
+        "Hyundai Engineering"
+      ],
+      "zh": []
+    },
+    {
+      "name": "보스턴다이내믹스",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "보스턴다이내믹스"
+      ],
+      "en": [
+        "Boston Dynamics"
+      ],
+      "zh": [
+        "波士顿动力"
+      ]
+    },
+    {
+      "name": "모셔널",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "모셔널"
+      ],
+      "en": [
+        "Motional"
+      ],
+      "zh": []
+    },
+    {
+      "name": "슈퍼널",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "슈퍼널"
+      ],
+      "en": [
+        "Supernal"
+      ],
+      "zh": []
+    },
+    {
+      "name": "포티투닷",
+      "group": "현대차그룹",
+      "priority": "mid",
+      "ko": [
+        "포티투닷"
+      ],
+      "en": [
+        "42dot"
+      ],
+      "zh": []
+    },
+    {
+      "name": "현대차·LG엔솔 조지아 합작법인",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대차·LG엔솔 조지아 합작법인",
+        "HL-GA"
+      ],
+      "en": [
+        "HL-GA Battery",
+        "HL-GA Battery Company"
+      ],
+      "zh": [],
+      "note": "현대차-LG에너지솔루션 조지아 배터리 합작법인"
+    },
+    {
+      "name": "현대차·SK온 조지아 합작법인",
+      "group": "현대차그룹",
+      "priority": "high",
+      "ko": [
+        "현대차·SK온 조지아 합작법인"
+      ],
+      "en": [
+        "SK On Hyundai joint venture",
+        "Hyundai SK On joint venture"
+      ],
+      "zh": [],
+      "note": "바토우카운티 배터리 합작공장. 법인 영문명 확인 후 수정 권장"
+    },
+    {
+      "name": "LG에너지솔루션",
+      "group": "K-배터리",
+      "priority": "high",
+      "ko": [
+        "LG에너지솔루션",
+        "LG엔솔",
+        "얼티엄셀즈"
+      ],
+      "en": [
+        "LG Energy Solution",
+        "LGES",
+        "LG Energy Solution Michigan",
+        "LG Energy Solution Arizona",
+        "Ultium Cells",
+        "L-H Battery",
+        "NextStar Energy"
+      ],
+      "zh": [
+        "LG新能源",
+        "乐金新能源"
+      ],
+      "note": "GM 합작 Ultium Cells, 혼다 합작 L-H Battery, 스텔란티스 합작 NextStar Energy 포함"
+    },
+    {
+      "name": "삼성SDI",
+      "group": "K-배터리",
+      "priority": "high",
+      "ko": [
+        "삼성SDI"
+      ],
+      "en": [
+        "Samsung SDI",
+        "StarPlus Energy"
+      ],
+      "zh": [
+        "三星SDI"
+      ],
+      "note": "스텔란티스 합작 StarPlus Energy 포함. GM 합작법인명 확인 후 추가"
+    },
+    {
+      "name": "SK온",
+      "group": "K-배터리",
+      "priority": "high",
+      "ko": [
+        "SK온"
+      ],
+      "en": [
+        "SK On",
+        "SK Battery America",
+        "BlueOval SK"
+      ],
+      "zh": [
+        "SK On",
+        "SK新能源"
+      ],
+      "note": "포드 합작 BlueOval SK, 조지아 SK Battery America 포함"
+    },
+    {
+      "name": "SK이노베이션",
+      "group": "K-배터리",
+      "priority": "mid",
+      "ko": [
+        "SK이노베이션"
+      ],
+      "en": [
+        "SK Innovation"
+      ],
+      "zh": [
+        "SK创新"
+      ]
+    },
+    {
+      "name": "포스코퓨처엠",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "포스코퓨처엠"
+      ],
+      "en": [
+        "POSCO Future M",
+        "Ultium CAM"
+      ],
+      "zh": [
+        "浦项未来M"
+      ]
+    },
+    {
+      "name": "포스코홀딩스",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "포스코홀딩스"
+      ],
+      "en": [
+        "POSCO Holdings",
+        "POSCO International"
+      ],
+      "zh": [
+        "浦项控股"
+      ]
+    },
+    {
+      "name": "에코프로",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "에코프로"
+      ],
+      "en": [
+        "EcoPro BM",
+        "EcoPro"
+      ],
+      "zh": [
+        "爱寇普"
+      ]
+    },
+    {
+      "name": "엘앤에프",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "엘앤에프"
+      ],
+      "en": [
+        "L&F Co"
+      ],
+      "zh": []
+    },
+    {
+      "name": "고려아연",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "고려아연"
+      ],
+      "en": [
+        "Korea Zinc"
+      ],
+      "zh": [
+        "高丽亚铅"
+      ]
+    },
+    {
+      "name": "LG화학",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "LG화학"
+      ],
+      "en": [
+        "LG Chem"
+      ],
+      "zh": [
+        "LG化学"
+      ]
+    },
+    {
+      "name": "솔루스첨단소재",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "솔루스첨단소재"
+      ],
+      "en": [
+        "Solus Advanced Materials"
+      ],
+      "zh": []
+    },
+    {
+      "name": "SKC·SK넥실리스",
+      "group": "K-배터리 소재",
+      "priority": "mid",
+      "ko": [
+        "SKC·SK넥실리스",
+        "SKC",
+        "SK넥실리스"
+      ],
+      "en": [
+        "SK Nexilis",
+        "SKC"
+      ],
+      "zh": []
+    },
+    {
+      "name": "HL만도",
+      "group": "부품",
+      "priority": "mid",
+      "ko": [
+        "HL만도"
+      ],
+      "en": [
+        "HL Mando",
+        "Mando America"
+      ],
+      "zh": [
+        "万都"
+      ]
+    },
+    {
+      "name": "한온시스템",
+      "group": "부품",
+      "priority": "mid",
+      "ko": [
+        "한온시스템"
+      ],
+      "en": [
+        "Hanon Systems"
+      ],
+      "zh": [
+        "翰昂"
+      ]
+    },
+    {
+      "name": "한국타이어",
+      "group": "타이어",
+      "priority": "mid",
+      "ko": [
+        "한국타이어"
+      ],
+      "en": [
+        "Hankook Tire"
+      ],
+      "zh": [
+        "韩泰轮胎"
+      ]
+    },
+    {
+      "name": "금호타이어",
+      "group": "타이어",
+      "priority": "mid",
+      "ko": [
+        "금호타이어"
+      ],
+      "en": [
+        "Kumho Tire"
+      ],
+      "zh": [
+        "锦湖轮胎"
+      ]
+    },
+    {
+      "name": "넥센타이어",
+      "group": "타이어",
+      "priority": "mid",
+      "ko": [
+        "넥센타이어"
+      ],
+      "en": [
+        "Nexen Tire"
+      ],
+      "zh": [
+        "耐克森轮胎"
+      ]
+    },
+    {
+      "name": "에스엘",
+      "group": "부품",
+      "priority": "mid",
+      "ko": [
+        "에스엘"
+      ],
+      "en": [
+        "SL Corporation"
+      ],
+      "zh": []
+    },
+    {
+      "name": "LG전자 VS·LG마그나",
+      "group": "부품",
+      "priority": "mid",
+      "ko": [
+        "LG전자 VS·LG마그나",
+        "LG마그나"
+      ],
+      "en": [
+        "LG Magna e-Powertrain",
+        "LG Electronics vehicle"
+      ],
+      "zh": []
+    },
+    {
+      "name": "삼성전자 하만",
+      "group": "부품",
+      "priority": "mid",
+      "ko": [
+        "삼성전자 하만",
+        "하만"
+      ],
+      "en": [
+        "Harman International"
+      ],
+      "zh": [
+        "哈曼"
+      ]
+    },
+    {
+      "name": "KG모빌리티",
+      "group": "국내 완성차",
+      "priority": "mid",
+      "ko": [
+        "KG모빌리티",
+        "KGM"
+      ],
+      "en": [
+        "KG Mobility",
+        "KGM"
+      ],
+      "zh": []
+    },
+    {
+      "name": "르노코리아",
+      "group": "국내 완성차",
+      "priority": "mid",
+      "ko": [
+        "르노코리아"
+      ],
+      "en": [
+        "Renault Korea"
+      ],
+      "zh": []
+    },
+    {
+      "name": "한국GM",
+      "group": "국내 완성차",
+      "priority": "mid",
+      "ko": [
+        "한국GM"
+      ],
+      "en": [
+        "GM Korea"
+      ],
+      "zh": []
+    },
+    {
+      "name": "GM",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "GM"
+      ],
+      "en": [
+        "General Motors"
+      ],
+      "zh": [
+        "通用汽车"
+      ]
+    },
+    {
+      "name": "포드",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "포드"
+      ],
+      "en": [
+        "Ford Motor"
+      ],
+      "zh": [
+        "福特"
+      ]
+    },
+    {
+      "name": "스텔란티스",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "스텔란티스"
+      ],
+      "en": [
+        "Stellantis"
+      ],
+      "zh": [
+        "Stellantis"
+      ]
+    },
+    {
+      "name": "혼다",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "혼다"
+      ],
+      "en": [
+        "Honda Motor"
+      ],
+      "zh": [
+        "本田"
+      ]
+    },
+    {
+      "name": "토요타",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "토요타"
+      ],
+      "en": [
+        "Toyota Motor"
+      ],
+      "zh": [
+        "丰田"
+      ]
+    },
+    {
+      "name": "테슬라",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "테슬라"
+      ],
+      "en": [
+        "Tesla"
+      ],
+      "zh": [
+        "特斯拉"
+      ]
+    },
+    {
+      "name": "BYD",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "BYD"
+      ],
+      "en": [
+        "BYD"
+      ],
+      "zh": [
+        "比亚迪"
+      ]
+    },
+    {
+      "name": "CATL",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "CATL"
+      ],
+      "en": [
+        "CATL",
+        "Contemporary Amperex"
+      ],
+      "zh": [
+        "宁德时代"
+      ]
+    },
+    {
+      "name": "궈시안",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "궈시안"
+      ],
+      "en": [
+        "Gotion"
+      ],
+      "zh": [
+        "国轩高科"
+      ]
+    },
+    {
+      "name": "EVE에너지",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "EVE에너지"
+      ],
+      "en": [
+        "EVE Energy"
+      ],
+      "zh": [
+        "亿纬锂能"
+      ]
+    },
+    {
+      "name": "CALB",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "CALB"
+      ],
+      "en": [
+        "CALB"
+      ],
+      "zh": [
+        "中创新航"
+      ]
+    },
+    {
+      "name": "파나소닉에너지",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "파나소닉에너지"
+      ],
+      "en": [
+        "Panasonic Energy"
+      ],
+      "zh": [
+        "松下能源"
+      ]
+    },
+    {
+      "name": "앨버말",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "앨버말"
+      ],
+      "en": [
+        "Albemarle"
+      ],
+      "zh": [
+        "雅保"
+      ]
+    },
+    {
+      "name": "간펑리튬",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "간펑리튬"
+      ],
+      "en": [
+        "Ganfeng Lithium"
+      ],
+      "zh": [
+        "赣锋锂业"
+      ]
+    },
+    {
+      "name": "리비안",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "리비안"
+      ],
+      "en": [
+        "Rivian"
+      ],
+      "zh": []
+    },
+    {
+      "name": "웨이모",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "웨이모"
+      ],
+      "en": [
+        "Waymo"
+      ],
+      "zh": []
+    },
+    {
+      "name": "엔비디아",
+      "group": "해외 파트너·경쟁사",
+      "priority": "low",
+      "ko": [
+        "엔비디아"
+      ],
+      "en": [
+        "NVIDIA"
+      ],
+      "zh": [
+        "英伟达"
+      ]
+    }
+  ],
+  "locations": [
+    {
+      "name": "조지아 브라이언카운티(HMGMA)",
+      "ko": "조지아",
+      "en": [
+        "Bryan County",
+        "Ellabell",
+        "Metaplant",
+        "Richmond Hill"
+      ],
+      "zh": []
+    },
+    {
+      "name": "조지아 서배너 항만",
+      "ko": "조지아",
+      "en": [
+        "Savannah",
+        "Port of Savannah",
+        "Chatham County",
+        "Effingham County",
+        "Bulloch County"
+      ],
+      "zh": []
+    },
+    {
+      "name": "조지아 웨스트포인트(기아)",
+      "ko": "조지아",
+      "en": [
+        "West Point",
+        "Troup County",
+        "LaGrange"
+      ],
+      "zh": []
+    },
+    {
+      "name": "조지아 바토우·커머스(배터리)",
+      "ko": "조지아",
+      "en": [
+        "Bartow County",
+        "Cartersville",
+        "Commerce, Georgia",
+        "Jackson County"
+      ],
+      "zh": []
+    },
+    {
+      "name": "조지아 주정부",
+      "ko": "조지아",
+      "en": [
+        "Georgia Department of Economic Development",
+        "Gov. Kemp",
+        "Governor Kemp",
+        "Brian Kemp"
+      ],
+      "zh": []
+    },
+    {
+      "name": "앨라배마 몽고메리(HMMA)",
+      "ko": "앨라배마",
+      "en": [
+        "Montgomery",
+        "Hope Hull",
+        "Alabama"
+      ],
+      "zh": []
+    },
+    {
+      "name": "테네시",
+      "ko": "테네시",
+      "en": [
+        "Clarksville",
+        "Spring Hill",
+        "Stanton",
+        "BlueOval City",
+        "Tennessee"
+      ],
+      "zh": []
+    },
+    {
+      "name": "켄터키",
+      "ko": "켄터키",
+      "en": [
+        "Glendale",
+        "Hardin County",
+        "Kentucky"
+      ],
+      "zh": []
+    },
+    {
+      "name": "오하이오",
+      "ko": "오하이오",
+      "en": [
+        "Fayette County",
+        "Jeffersonville",
+        "Ohio"
+      ],
+      "zh": []
+    },
+    {
+      "name": "미시간",
+      "ko": "미시간",
+      "en": [
+        "Holland, Michigan",
+        "Lansing",
+        "Michigan"
+      ],
+      "zh": []
+    },
+    {
+      "name": "인디애나",
+      "ko": "인디애나",
+      "en": [
+        "Kokomo",
+        "New Carlisle",
+        "Indiana"
+      ],
+      "zh": []
+    },
+    {
+      "name": "애리조나",
+      "ko": "애리조나",
+      "en": [
+        "Queen Creek",
+        "Arizona"
+      ],
+      "zh": []
+    },
+    {
+      "name": "루이지애나",
+      "ko": "루이지애나",
+      "en": [
+        "Donaldsonville",
+        "Ascension Parish",
+        "Louisiana"
+      ],
+      "zh": []
+    },
+    {
+      "name": "텍사스",
+      "ko": "텍사스",
+      "en": [
+        "Texas",
+        "Austin"
+      ],
+      "zh": []
+    },
+    {
+      "name": "캐나다 온타리오·퀘벡",
+      "ko": "캐나다",
+      "en": [
+        "Windsor",
+        "Ontario",
+        "Bécancour",
+        "Quebec"
+      ],
+      "zh": []
+    },
+    {
+      "name": "멕시코",
+      "ko": "멕시코",
+      "en": [
+        "Nuevo León",
+        "Pesquería",
+        "Monterrey",
+        "Mexico"
+      ],
+      "zh": []
+    },
+    {
+      "name": "헝가리",
+      "ko": "헝가리",
+      "en": [
+        "Göd",
+        "Iváncsa",
+        "Komárom",
+        "Hungary"
+      ],
+      "zh": []
+    },
+    {
+      "name": "폴란드",
+      "ko": "폴란드",
+      "en": [
+        "Wrocław",
+        "Poland"
+      ],
+      "zh": []
+    },
+    {
+      "name": "체코·슬로바키아",
+      "ko": "유럽",
+      "en": [
+        "Nošovice",
+        "Žilina",
+        "Czech",
+        "Slovakia"
+      ],
+      "zh": []
+    },
+    {
+      "name": "튀르키예",
+      "ko": "튀르키예",
+      "en": [
+        "İzmit",
+        "Izmit",
+        "Turkey",
+        "Türkiye"
+      ],
+      "zh": []
+    },
+    {
+      "name": "인도",
+      "ko": "인도",
+      "en": [
+        "Chennai",
+        "Talegaon",
+        "Pune",
+        "India"
+      ],
+      "zh": []
+    },
+    {
+      "name": "인도네시아",
+      "ko": "인도네시아",
+      "en": [
+        "Karawang",
+        "Bekasi",
+        "Indonesia"
+      ],
+      "zh": []
+    },
+    {
+      "name": "브라질",
+      "ko": "브라질",
+      "en": [
+        "Piracicaba",
+        "Brazil"
+      ],
+      "zh": []
+    },
+    {
+      "name": "중국",
+      "ko": "중국",
+      "en": [
+        "Beijing",
+        "Yancheng",
+        "Changzhou",
+        "Nanjing",
+        "Xi'an",
+        "Tianjin"
+      ],
+      "zh": [
+        "北京",
+        "盐城",
+        "常州",
+        "南京",
+        "西安",
+        "天津"
+      ]
+    }
+  ]
+}

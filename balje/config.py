@@ -189,12 +189,54 @@ DEFAULTS = {
     },
     # 도메인 → 매체명 추가 매핑(기본 표에 없는 매체)
     "press_map": {},
+    # OSINT 데스크(해외 1차 출처 레이더·역추적)
+    "osint": {
+        "lookback_days": 7,        # 이번 수집에서 볼 기간
+        "mosaic_days": 14,         # 모자이크(다른 채널 신호 묶기)에 쓰는 과거 신호 기간
+        "domestic_days": 30,       # 국내 기보도 검색 기간
+        "max_candidates": 8,
+        "auto_minutes": 0,         # 창을 켜두면 N분마다 자동 실행(0=끔)
+        "watchlist_file": "watchlist.json",
+        "db_file": "data/osint.db",
+        "channels": {
+            "sec": {"enabled": True, "name": "SEC 공시", "weight": 5,
+                    "forms": "8-K,6-K,10-Q,10-K,S-1,S-4,425", "priorities": ["high", "mid"]},
+            "courts": {"enabled": True, "name": "미국 법원", "weight": 5, "kinds": ["r", "o"],
+                       "entities_per_query": 6, "priorities": ["high", "mid"]},
+            "nhtsa": {"enabled": True, "name": "NHTSA 리콜", "weight": 4, "model_years": 4, "refresh_hours": 12,
+                      "makes": {"HYUNDAI": "현대자동차", "KIA": "기아", "GENESIS": "제네시스"}},
+            "gov_press": {"enabled": True, "name": "주정부·지자체 발표", "weight": 4, "sites": [
+                "gov.georgia.gov", "georgia.org", "governor.alabama.gov", "madeinalabama.com", "tn.gov",
+                "governor.ky.gov", "ced.ky.gov", "governor.ohio.gov", "michigan.gov", "in.gov", "iedc.in.gov",
+                "azgovernor.gov", "gov.louisiana.gov", "opportunitylouisiana.gov", "pa.gov", "nc.gov",
+                "sccommerce.com", "gov.texas.gov"]},
+            "pr_wire": {"enabled": True, "name": "PR 와이어·파트너사 발표", "weight": 3, "sites": [
+                "prnewswire.com", "businesswire.com", "globenewswire.com", "accessnewswire.com",
+                "newsfilecorp.com", "hyundainews.com", "kiamedia.com", "news.gm.com", "media.ford.com",
+                "stellantis.com"]},
+            "eu_comp": {"enabled": True, "name": "EU 경쟁총국", "weight": 4, "sites": ["ec.europa.eu"],
+                        "extra": "(merger OR antitrust OR competition OR subsidy)"},
+            "local_media": {"enabled": True, "name": "현지 지방 매체", "weight": 3, "by_location": True,
+                            "priorities": ["high"], "max_queries": 24},
+            "trade_media": {"enabled": True, "name": "해외 업계 전문지", "weight": 2, "sites": [
+                "autonews.com", "electrive.com", "insideevs.com", "electrek.co", "wardsauto.com",
+                "automotivedive.com", "supplychaindive.com", "freightwaves.com", "just-auto.com",
+                "batteryindustry.net"]},
+            "china_media": {"enabled": True, "name": "중국 매체", "weight": 3, "lang": "zh",
+                            "priorities": ["high", "mid"]},
+            "feeds": {"enabled": True, "name": "사용자 RSS", "weight": 3, "list": []},
+        },
+    },
     # API 키(비워두면 환경변수 NAVER_CLIENT_ID / NAVER_CLIENT_SECRET /
     # ANTHROPIC_API_KEY / GEMINI_API_KEY 사용)
     "naver_client_id": "",
     "naver_client_secret": "",
     "anthropic_api_key": "",
     "gemini_api_key": "",
+    "courtlistener_token": "",     # CourtListener(미국 법원) API 토큰
+    "sec_email": "",               # SEC가 요구하는 접속자 연락처(이메일)
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
 }
 
 

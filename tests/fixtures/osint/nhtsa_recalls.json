@@ -1,0 +1,7 @@
+{"Count": 2, "Message": "Results returned successfully", "results": [
+  {"Manufacturer": "Acme Motors America", "NHTSACampaignNumber": "26V700000", "ReportReceivedDate": "13/10/2026",
+   "Component": "ELECTRICAL SYSTEM", "Summary": "Fictional summary", "Consequence": "Fictional risk", "Remedy": "Fictional remedy",
+   "ModelYear": "2026", "Make": "ACME", "Model": "ROADSTER"},
+  {"Manufacturer": "Acme Motors America", "NHTSACampaignNumber": "21V100000", "ReportReceivedDate": "01/02/2021",
+   "Component": "OLD", "Summary": "old", "Consequence": "", "Remedy": "", "ModelYear": "2026", "Make": "ACME", "Model": "ROADSTER"}
+]}

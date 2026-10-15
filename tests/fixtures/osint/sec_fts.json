@@ -1,0 +1,7 @@
+{"hits": {"total": {"value": 2}, "hits": [
+  {"_id": "0000123456-26-000077:globex-ex99_1.htm", "_source": {
+    "ciks": ["0000123456"], "display_names": ["Globex Corp  (GBX)  (CIK 0000123456)"], "file_date": "2026-10-12",
+    "form": "8-K", "adsh": "0000123456-26-000077", "file_type": "EX-99.1", "file_description": "PRESS RELEASE",
+    "biz_locations": ["Riverton, TS"]}},
+  {"_id": "0000999999-26-000001:", "_source": {"ciks": [], "adsh": ""}}
+]}}
