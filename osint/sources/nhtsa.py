@@ -1,7 +1,9 @@
 """미국 NHTSA 리콜(공개 API, 키 불필요). 브랜드·연식별 모델 목록 → 모델별 리콜 → 최근 접수분만."""
 
+import json
 import re
 import time
+import urllib.error
 from datetime import datetime, timedelta, timezone
 
 from .. import http
@@ -38,9 +40,39 @@ def models(make, year):
     return list(dict.fromkeys(r.get("model") for r in data.get("results", []) if r.get("model")))
 
 
-def recalls_for(make, model, year):
-    data = http.get_json(f"{API}/recalls/recallsByVehicle", {"make": make, "model": model, "modelYear": year})
+_SUFFIX = {"ICE", "HEV", "PHEV", "EV", "HYBRID", "PLUG-IN", "ELECTRIC", "N"}
+
+
+def base_model(model):
+    """'SANTA FE HYBRID HEV' → 'SANTA FE'. 모델 목록의 동력계 꼬리표는 리콜 검색에서 안 맞는다."""
+    words = model.split()
+    while len(words) > 1 and words[-1].upper() in _SUFFIX:
+        words.pop()
+    return " ".join(words)
+
+
+def _recalls_raw(make, model, year):
+    try:
+        data = http.get_json(f"{API}/recalls/recallsByVehicle", {"make": make, "model": model, "modelYear": year})
+    except urllib.error.HTTPError as e:
+        # NHTSA는 결과가 없을 때도 400과 함께 {"Count":0, ...}을 돌려준다
+        if e.code == 400:
+            try:
+                body = json.loads(e.read().decode("utf-8", "replace"))
+                if body.get("Count") == 0:
+                    return []
+            except (ValueError, OSError):
+                pass
+        raise
     return data.get("results", [])
+
+
+def recalls_for(make, model, year):
+    rows = _recalls_raw(make, model, year)
+    base = base_model(model)
+    if not rows and base != model:
+        rows = _recalls_raw(make, base, year)
+    return rows
 
 
 def collect_recalls(rows, since):
@@ -79,7 +111,7 @@ def search(makes, years, since, sleep=0.15, log=None):
     for make in makes:
         for year in years:
             try:
-                names = models(make, year)
+                names = list(dict.fromkeys(base_model(m) for m in models(make, year)))
             except Exception as e:  # noqa: BLE001 - 한 브랜드·연식 실패가 전체를 막지 않게
                 if log:
                     log(f"[NHTSA] {make} {year} 모델 목록 실패: {e}")

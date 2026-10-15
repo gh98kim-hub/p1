@@ -348,3 +348,30 @@ def test_http_encodes_spaces_as_percent20(monkeypatch):
     monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
     http.get_json("https://api.example/x", {"model": "SANTA FE ICE", "q": '"Hyundai Motor"'})
     assert "model=SANTA%20FE%20ICE" in seen["url"] and "+" not in seen["url"]
+
+
+def test_nhtsa_base_model_and_400_empty(monkeypatch):
+    import io
+    import urllib.error
+    assert nhtsa.base_model("SANTA FE HYBRID HEV") == "SANTA FE"
+    assert nhtsa.base_model("IONIQ 5 N") == "IONIQ 5"
+    assert nhtsa.base_model("EV9") == "EV9"
+    calls = []
+
+    def fake(url, params=None, headers=None, timeout=20):
+        calls.append(params["model"])
+        if params["model"] == "SANTA FE ICE":
+            raise urllib.error.HTTPError(url, 400, "Bad Request", {},
+                                         io.BytesIO(b'{"Count":0,"Message":"Results returned successfully","results":[]}'))
+        return _json("nhtsa_recalls.json")
+
+    monkeypatch.setattr(http, "get_json", fake)
+    rows = nhtsa.recalls_for("hyundai", "SANTA FE ICE", 2026)
+    assert calls == ["SANTA FE ICE", "SANTA FE"] and len(rows) == 2
+
+    def other_400(url, params=None, headers=None, timeout=20):
+        raise urllib.error.HTTPError(url, 400, "Bad Request", {}, io.BytesIO(b'{"error":"bad"}'))
+
+    monkeypatch.setattr(http, "get_json", other_400)
+    with pytest.raises(urllib.error.HTTPError):
+        nhtsa.recalls_for("hyundai", "X", 2026)
