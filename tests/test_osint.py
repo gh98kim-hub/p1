@@ -324,3 +324,27 @@ def test_reverse_without_ai_uses_watchlist(tmp_path, fake_net):
                       out_dir=tmp_path / "out", now=NOW)
     assert res["extract"]["queries_en"][0] == '"Acme Motors"'
     assert not res["ai"]
+
+
+def test_http_encodes_spaces_as_percent20(monkeypatch):
+    seen = {}
+
+    class Resp:
+        headers = type("H", (), {"get": lambda self, k, d=None: None, "get_content_charset": lambda self: "utf-8"})()
+
+        def read(self):
+            return b"{}"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=20):
+        seen["url"] = req.full_url
+        return Resp()
+
+    monkeypatch.setattr(http.urllib.request, "urlopen", fake_urlopen)
+    http.get_json("https://api.example/x", {"model": "SANTA FE ICE", "q": '"Hyundai Motor"'})
+    assert "model=SANTA%20FE%20ICE" in seen["url"] and "+" not in seen["url"]

@@ -566,8 +566,9 @@ def _osint_net_checks():
 
     def nh():
         ms = nhtsa.models("hyundai", now.year)
-        recs = nhtsa.recalls_for("hyundai", ms[0], now.year) if ms else []
-        return (f"{len(ms)} models; {len(recs)} recalls for {ms[0] if ms else '-'}; "
+        spaced = next((m for m in ms if " " in m), ms[0] if ms else "")
+        recs = nhtsa.recalls_for("hyundai", spaced, now.year) if ms else []
+        return (f"{len(ms)} models; {len(recs)} recalls for {spaced or '-'}; "
                 f"date sample={recs[0].get('ReportReceivedDate') if recs else '-'}")
 
     def cl():
@@ -585,50 +586,9 @@ def _osint_net_checks():
 
     rec("sec", sec)
     rec("nhtsa", nh)
-    out += _diag_variants()
     rec("courts(no token)", cl)
     for key in ("gov_press", "pr_wire", "eu_comp", "local_media", "china_media"):
         rec(key, gn(key))
-    return out
-
-
-def _diag_variants():
-    """SEC·NHTSA 접속 조건 진단(헤더·파라미터별 응답 코드)."""
-    import urllib.error
-    import urllib.request
-    email = os.environ.get("BALJE_SEC_EMAIL", "")
-    tests = [
-        ("sec submissions UA-a", "https://data.sec.gov/submissions/CIK0001318605.json",
-         {"User-Agent": f"BaljeOSINT {email}"}),
-        ("sec fts UA-a", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22&forms=8-K",
-         {"User-Agent": f"BaljeOSINT {email}"}),
-        ("sec fts UA-b", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22",
-         {"User-Agent": f"Balje Research {email}", "Accept-Encoding": "identity", "Host": "efts.sec.gov"}),
-        ("sec fts sec-format", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22",
-         {"User-Agent": f"Balje OSINT {email}", "Accept-Encoding": "gzip, deflate"}),
-        ("sec www sec-format", "https://www.sec.gov/cgi-bin/browse-edgar?action=getcurrent&output=atom",
-         {"User-Agent": f"Balje OSINT {email}", "Accept-Encoding": "gzip, deflate", "Host": "www.sec.gov"}),
-        ("sec www fts", "https://www.sec.gov/cgi-bin/srch-edgar?text=Hyundai&first=2024&last=2026",
-         {"User-Agent": f"BaljeOSINT {email}"}),
-        ("nhtsa models 2025", "https://api.nhtsa.gov/products/vehicle/models?modelYear=2025&make=hyundai&issueType=r", {}),
-        ("nhtsa models 2026", "https://api.nhtsa.gov/products/vehicle/models?modelYear=2026&make=HYUNDAI&issueType=r", {}),
-        ("nhtsa makes 2025", "https://api.nhtsa.gov/products/vehicle/makes?modelYear=2025&issueType=r", {}),
-        ("nhtsa recalls tucson", "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=tucson&modelYear=2024", {}),
-        ("nhtsa models osint-headers",
-         "https://api.nhtsa.gov/products/vehicle/models?modelYear=2026&make=hyundai&issueType=r",
-         {"User-Agent": "BaljeOSINT/1.0 (news research tool)", "Accept": "application/json"}),
-    ]
-    out = []
-    for label, url, headers in tests:
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=20) as r:
-                body = r.read(300).decode("utf-8", "replace").replace("\n", " ")
-                out.append(f"diag {label}: {r.status} {body[:200]!r}")
-        except urllib.error.HTTPError as e:
-            out.append(f"diag {label}: HTTP {e.code} {e.read(200).decode('utf-8', 'replace')[:160]!r}")
-        except Exception as e:  # noqa: BLE001
-            out.append(f"diag {label}: {type(e).__name__} {e}")
     return out
 
 

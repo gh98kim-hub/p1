@@ -13,7 +13,8 @@ USER_AGENT = "BaljeOSINT/1.0 (news research tool)"
 
 def get(url, params=None, headers=None, timeout=20):
     if params:
-        url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+        # 공백은 %20으로(NHTSA는 '+'로 쓴 공백을 거부한다)
+        url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params, quote_via=urllib.parse.quote)
     h = {"User-Agent": USER_AGENT, "Accept": "*/*"}
     h.update(headers or {})
     req = urllib.request.Request(url, headers=h)
