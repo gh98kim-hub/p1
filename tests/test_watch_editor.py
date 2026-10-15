@@ -127,3 +127,52 @@ def test_editor_close_asks_to_save(tmp_path, tk_root, monkeypatch):
     monkeypatch.setattr("tkinter.messagebox.askyesnocancel", lambda *a, **k: True)
     ed.close()
     assert wl.entity(wl.load(p), "새회사")
+
+
+# ---------------------------------------------------------------- 깨진 파일 자동 복구
+
+BROKEN_TAIL = """
+{
+      "name": "가상 회장",
+      "priority": "high",
+      "ko": ["가상 회장"],
+      "en": ["Chairman Acme"],
+      "zh": []
+    },
+    {
+      "name": "가상자동차",
+      "priority": "low",
+      "ko": ["가상"],
+      "en": ["Acme Motor Works"],
+      "zh": [],
+    }
+{
+      "name": "테스트주 강변",
+      "ko": "강변",
+      "en": ["River Side"],
+      "zh": []
+    }
+"""
+
+
+def test_repair_items_pasted_after_the_end(tmp_path):
+    p = _copy(tmp_path)
+    p.write_text(p.read_text(encoding="utf-8") + BROKEN_TAIL, encoding="utf-8")
+    with pytest.raises(wl.WatchlistError, match="자동으로 고칠 수 있습니다"):
+        wl.load(p)
+    backup, done = wl.repair_file(p)
+    assert backup.exists() and "깨진파일" in backup.name and backup.read_text(encoding="utf-8").endswith(BROKEN_TAIL)
+    data = wl.load(p)                                         # 이제 정상으로 읽힌다
+    assert [e["name"] for e in data["entities"]] == ["가상자동차", "볼트셀", "글로벡스", "가상 회장"]
+    acme = wl.entity(data, "가상자동차")
+    assert acme["priority"] == "high" and "Acme Motor Works" in acme["en"] and "가상" in acme["ko"]
+    assert wl.location(data, "테스트주 강변")["en"] == ["River Side"]
+    assert any("추적 대상 1곳, 지역 1곳" in x for x in done) and any("가상자동차" in x for x in done)
+
+
+def test_repair_broken_outer_brackets_and_nothing_to_save(tmp_path):
+    text = '{"entities": [ {"name": "가", "priority": "high", "en": ["Ga Corp"]} {"name": "나", "en": ["Na Inc"], "ko": []}'
+    data, _ = wl.repair_text(text)
+    assert [e["name"] for e in data["entities"]] == ["가", "나"]
+    with pytest.raises(wl.WatchlistError):
+        wl.repair_text("완전히 망가진 글")

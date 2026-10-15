@@ -517,8 +517,28 @@ class App(tk.Tk):
         try:
             WatchlistEditor(self, self._watchlist_path(), on_saved=self.reload_watchlist, open_text=open_text)
         except WatchlistError as e:
-            messagebox.showerror("추적 대상", f"{e}\n\n메모장으로 열어 고치세요.")
-            open_text(osint_watchlist.ensure_file(self._watchlist_path()))
+            if self._offer_repair(e):
+                WatchlistEditor(self, self._watchlist_path(), on_saved=self.reload_watchlist, open_text=open_text)
+            else:
+                open_text(osint_watchlist.ensure_file(self._watchlist_path()))
+
+    def _offer_repair(self, err):
+        """watchlist.json이 깨졌을 때 자동 복구를 제안한다. 고쳤으면 True."""
+        path = self._watchlist_path()
+        msg = (f"추적 대상 파일(watchlist.json)이 깨졌습니다.\n{str(err).splitlines()[0]}\n\n"
+               "자동으로 고칠까요?\n(원래 파일은 '깨진파일'이라는 이름으로 같은 폴더에 남겨 둡니다)")
+        if not messagebox.askyesno("추적 대상", msg):
+            return False
+        try:
+            backup, done = osint_watchlist.repair_file(path)
+        except (WatchlistError, OSError, ValueError) as e:
+            messagebox.showerror("추적 대상", f"자동으로 고치지 못했습니다: {e}\n메모장으로 열어 고치세요.")
+            return False
+        self.log(f"추적 대상 파일을 고쳤습니다(원래 파일: {backup.name})")
+        for line in done:
+            self.log("  " + line)
+        self.reload_watchlist()
+        return True
 
     def quick_add_watch(self):
         """OSINT 탭의 '추적 대상 추가' 칸: 첫 키워드가 대표 이름, 나머지는 다른 표기."""
@@ -546,7 +566,7 @@ class App(tk.Tk):
         try:
             w = osint_watchlist.load(osint_watchlist.ensure_file(self._watchlist_path()))
         except WatchlistError as e:
-            messagebox.showerror("추적 대상", str(e))
+            self._offer_repair(e)     # 고치면 그 안에서 다시 읽는다
             return
         by = {}
         for e in w["entities"]:

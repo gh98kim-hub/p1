@@ -35,7 +35,8 @@ def load(path=None):
     try:
         data = json.loads(p.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
-        raise WatchlistError(f"{p.name} {e.lineno}번째 줄 {e.colno}번째 칸 근처 형식 오류: {e.msg}") from e
+        raise WatchlistError(f"{p.name} {e.lineno}번째 줄 {e.colno}번째 칸 근처 형식 오류: {e.msg}\n"
+                             "[추적 대상 편집]을 누르면 자동으로 고칠 수 있습니다.") from e
     ents = data.get("entities")
     if not isinstance(ents, list) or not ents:
         raise WatchlistError(f"{p.name}에 entities 목록이 없습니다.")
@@ -211,3 +212,95 @@ def warnings(e):
     if short:
         out.append("아주 짧은 영문 키워드(" + ", ".join(short) + ")는 엉뚱한 기사에 걸릴 수 있습니다. 약어면 대문자로 쓰세요.")
     return out
+
+
+# ---------------------------------------------------------------- 깨진 파일 자동 복구
+
+def _merge_entity(old, new):
+    for k in ("ko", "en", "zh", "exclude"):
+        old[k] = list(dict.fromkeys((old.get(k) or []) + (new.get(k) or [])))
+    for k, v in new.items():
+        old.setdefault(k, v)
+
+
+def _merge_location(old, new):
+    for k in ("en", "zh"):
+        old[k] = list(dict.fromkeys((old.get(k) or []) + (new.get(k) or [])))
+
+
+def repair_text(text):
+    """메모장 편집으로 깨진 watchlist.json을 살린다.
+    파일 끝(마지막 '}') 뒤에 붙여 넣은 항목, 항목 사이 쉼표 빠짐, 끝에 남은 쉼표를 고친다.
+    반환: (고친 데이터, 한 일 목록). 살릴 항목이 없으면 WatchlistError."""
+    import re
+    s = (text or "").lstrip("﻿")
+    s = re.sub(r",(\s*[}\]])", r"\1", s)           # 끝에 남은 쉼표
+    dec = json.JSONDecoder()
+    objs, i = [], 0
+    while True:
+        j = s.find("{", i)
+        if j < 0:
+            break
+        try:
+            obj, end = dec.raw_decode(s, j)
+        except ValueError:
+            i = j + 1                                  # 바깥 괄호가 깨졌으면 안쪽 항목을 하나씩 살린다
+            continue
+        objs.append(obj)
+        i = end
+    base = next((o for o in objs if isinstance(o, dict) and isinstance(o.get("entities"), list)), None)
+    data = base if base is not None else {"entities": [], "locations": []}
+    data.setdefault("locations", [])
+    done, n_ent, n_loc = [], 0, 0
+    pieces = []
+    for o in objs:
+        if o is base or not isinstance(o, dict):
+            continue
+        if isinstance(o.get("entities"), list):
+            pieces += o["entities"] + o.get("locations", [])
+        else:
+            pieces.append(o)
+    for o in pieces:
+        if not isinstance(o, dict) or not o.get("name"):
+            continue
+        is_entity = isinstance(o.get("ko"), list) or "priority" in o or "exclude" in o
+        if is_entity:
+            old = entity(data, o["name"])
+            if old:
+                _merge_entity(old, o)
+                done.append(f"추적 대상 '{o['name']}': 같은 이름이 있어 키워드를 합침")
+            else:
+                data["entities"].append(o)
+                n_ent += 1
+        else:
+            old = location(data, o["name"])
+            if old:
+                _merge_location(old, o)
+                done.append(f"지역 '{o['name']}': 같은 이름이 있어 키워드를 합침")
+            else:
+                data["locations"].append(o)
+                n_loc += 1
+    if not data["entities"]:
+        raise WatchlistError("파일에서 살릴 수 있는 추적 대상을 찾지 못했습니다.")
+    if n_ent or n_loc:
+        done.insert(0, f"제자리를 벗어난 항목을 목록 안으로 옮김: 추적 대상 {n_ent}곳, 지역 {n_loc}곳")
+    return data, done
+
+
+def repair_file(path):
+    """깨진 파일을 고쳐 저장한다. 원래 파일은 '이름.깨진파일_날짜시각.json'으로 남긴다. 반환: (백업 경로, 한 일)."""
+    from datetime import datetime
+    p = Path(path)
+    raw = p.read_text(encoding="utf-8-sig")
+    data, done = repair_text(raw)
+    tmp = p.with_suffix(".check.json")
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        load(tmp)                                       # 고친 결과가 정상으로 읽히는지 먼저 확인
+        validate(data)
+    finally:
+        tmp.unlink(missing_ok=True)
+    backup = p.with_name(f"{p.stem}.깨진파일_{datetime.now():%Y%m%d_%H%M%S}{p.suffix}")
+    backup.write_text(raw, encoding="utf-8")
+    save(data, p)
+    return backup, done
