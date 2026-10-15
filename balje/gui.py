@@ -585,9 +585,46 @@ def _osint_net_checks():
 
     rec("sec", sec)
     rec("nhtsa", nh)
+    out += _diag_variants()
     rec("courts(no token)", cl)
     for key in ("gov_press", "pr_wire", "eu_comp", "local_media", "china_media"):
         rec(key, gn(key))
+    return out
+
+
+def _diag_variants():
+    """SEC·NHTSA 접속 조건 진단(헤더·파라미터별 응답 코드)."""
+    import urllib.error
+    import urllib.request
+    email = os.environ.get("BALJE_SEC_EMAIL", "")
+    tests = [
+        ("sec submissions UA-a", "https://data.sec.gov/submissions/CIK0001318605.json",
+         {"User-Agent": f"BaljeOSINT {email}"}),
+        ("sec fts UA-a", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22&forms=8-K",
+         {"User-Agent": f"BaljeOSINT {email}"}),
+        ("sec fts UA-b", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22",
+         {"User-Agent": f"Balje Research {email}", "Accept-Encoding": "identity", "Host": "efts.sec.gov"}),
+        ("sec fts browser", "https://efts.sec.gov/LATEST/search-index?q=%22Hyundai%20Motor%22",
+         {"User-Agent": "Mozilla/5.0"}),
+        ("sec www fts", "https://www.sec.gov/cgi-bin/srch-edgar?text=Hyundai&first=2024&last=2026",
+         {"User-Agent": f"BaljeOSINT {email}"}),
+        ("nhtsa models 2025", "https://api.nhtsa.gov/products/vehicle/models?modelYear=2025&make=hyundai&issueType=r", {}),
+        ("nhtsa models 2026", "https://api.nhtsa.gov/products/vehicle/models?modelYear=2026&make=HYUNDAI&issueType=r", {}),
+        ("nhtsa makes 2025", "https://api.nhtsa.gov/products/vehicle/makes?modelYear=2025&issueType=r", {}),
+        ("nhtsa recalls tucson", "https://api.nhtsa.gov/recalls/recallsByVehicle?make=hyundai&model=tucson&modelYear=2024", {}),
+        ("nhtsa recalls docs", "https://api.nhtsa.gov/recalls/recallsByVehicle?make=acura&model=rdx&modelYear=2012", {}),
+    ]
+    out = []
+    for label, url, headers in tests:
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req, timeout=20) as r:
+                body = r.read(300).decode("utf-8", "replace").replace("\n", " ")
+                out.append(f"diag {label}: {r.status} {body[:200]!r}")
+        except urllib.error.HTTPError as e:
+            out.append(f"diag {label}: HTTP {e.code} {e.read(200).decode('utf-8', 'replace')[:160]!r}")
+        except Exception as e:  # noqa: BLE001
+            out.append(f"diag {label}: {type(e).__name__} {e}")
     return out
 
 
@@ -626,11 +663,14 @@ def _net_checks():
     try:
         raw, cs = collect._http_get("https://news.naver.com/main/ranking/popularDay.naver")
         page = collect._decode(raw, cs)
-        m = re.search(r"https://n\.news\.naver\.com/(?:mnews/)?article/\d+/\d+", page)
-        if m:
-            body = collect.fetch_body(collect.Article(title="", link=m.group(0)))
-            lines.append(f"naver body {'ok' if body else 'EMPTY'} {len(body)} chars {m.group(0)} :: {body[:80]!r}")
-        else:
+        links = list(dict.fromkeys(re.findall(r"https://n\.news\.naver\.com/(?:mnews/)?article/\d+/\d+", page)))
+        for link in links[:3]:
+            body = collect.fetch_body(collect.Article(title="", link=link))
+            raw2, cs2 = collect._http_get(link)
+            page2 = collect._decode(raw2, cs2)
+            lines.append(f"naver body {'ok' if body else 'EMPTY'} {len(body)} chars {link} "
+                         f"(html {len(page2)}, dic_area={'dic_area' in page2}) :: {body[:60]!r}")
+        if not links:
             lines.append("naver body: 랭킹 페이지에서 기사 링크를 못 찾음")
     except Exception as e:  # noqa: BLE001
         lines.append(f"naver body check error: {e}")
