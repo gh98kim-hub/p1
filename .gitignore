@@ -6,4 +6,4 @@ output/
 data/
 config.json
 .env
-watchlist.json
+/watchlist.json

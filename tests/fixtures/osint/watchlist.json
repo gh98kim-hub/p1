@@ -1,0 +1,11 @@
+{
+  "_설명": ["테스트용 가상 추적 대상(실제 기업과 무관)"],
+  "entities": [
+    {"name": "가상자동차", "priority": "high", "ko": ["가상차"], "en": ["Acme Motors", "Acme"], "zh": ["艾克米汽车"], "exclude": ["Acme Bank"]},
+    {"name": "볼트셀", "priority": "high", "ko": [], "en": ["Bolt Cells"], "zh": []},
+    {"name": "글로벡스", "priority": "low", "ko": [], "en": ["Globex"], "zh": []}
+  ],
+  "locations": [
+    {"name": "테스트주 오크카운티", "ko": "테스트주", "en": ["Oak County", "Riverton"], "zh": []}
+  ]
+}
