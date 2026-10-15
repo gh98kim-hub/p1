@@ -49,6 +49,7 @@ class Article:
     naver_link: str = ""   # 네이버 뉴스 페이지(있으면 본문 수집에 우선 사용)
     lang: str = "ko"       # "en"이면 외신
     body: str = ""         # 수집한 본문(발제 후보만)
+    title_ko: str = ""     # 외신 제목 번역
 
     def to_dict(self):
         d = asdict(self)

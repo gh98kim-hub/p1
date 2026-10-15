@@ -10,7 +10,6 @@ import sys
 import threading
 import tkinter as tk
 import traceback
-import webbrowser
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -18,6 +17,7 @@ from osint import watchlist as osint_watchlist
 from osint.watchlist import WatchlistError
 
 from . import pipeline
+from .viewer import ReportViewer
 from .config import _merge, brands_from_names, load_config, save_config
 
 FONT = ("Malgun Gothic", 10)
@@ -148,7 +148,7 @@ class App(tk.Tk):
         self.input_files = []
         self.materials_dir = None
         self._build()
-        self.after(100, self._drain_log)
+        self._drain_id = self.after(100, self._drain_log)
         if not (self.config_data.get("naver_client_id") or os.environ.get("NAVER_CLIENT_ID")):
             self.log("처음이면 [설정]에서 네이버 API 키를 넣으세요. 키 없이 [샘플로 시험]도 해볼 수 있습니다.\n")
 
@@ -221,7 +221,7 @@ class App(tk.Tk):
         ttk.Button(bar, text="설정", command=self.open_settings).pack(side="left")
         ttk.Button(bar, text="샘플로 시험", command=self.run_sample).pack(side="left", padx=6)
         ttk.Button(bar, text="결과 폴더 열기", command=self.open_output).pack(side="left")
-        ttk.Button(bar, text="마크다운 열기", command=self.open_markdown).pack(side="left", padx=6)
+        ttk.Button(bar, text="결과 보기", command=self.open_markdown).pack(side="left", padx=6)
         self.run_btn = ttk.Button(bar, text="발제 노트 만들기", command=self.run_main)
         self.run_btn.pack(side="right")
         self.run_buttons.append(self.run_btn)
@@ -268,7 +268,7 @@ class App(tk.Tk):
         btn = ttk.Button(bar, text="레이더 실행", command=self.run_radar)
         btn.pack(side="right")
         ttk.Button(bar, text="결과 폴더", command=self.open_output).pack(side="right", padx=6)
-        ttk.Button(bar, text="리포트 열기", command=lambda: self.open_latest("OSINT리포트_*.html")).pack(side="right")
+        ttk.Button(bar, text="리포트 열기", command=lambda: self.open_latest("OSINT리포트_*.md")).pack(side="right")
         self.run_buttons.append(btn)
         ttk.Label(tab, foreground="#666", justify="left",
                   text="SEC·NHTSA·뉴스 채널은 키 없이 동작합니다. 미국 법원은 [설정]의 CourtListener 토큰을 씁니다.\n"
@@ -285,7 +285,7 @@ class App(tk.Tk):
         ttk.Label(bar, text="AI").pack(side="left")
         self._ai_combo(bar).pack(side="left", padx=4)
         ttk.Label(bar, foreground="#666", text="(AI 없이도 추적 대상 목록으로 1차 출처 후보는 찾습니다)").pack(side="left", padx=6)
-        ttk.Button(bar, text="역추적 리포트 열기", command=lambda: self.open_latest("역추적_*.html")).pack(side="right", padx=6)
+        ttk.Button(bar, text="역추적 리포트 열기", command=lambda: self.open_latest("역추적_*.md")).pack(side="right", padx=6)
         btn = ttk.Button(bar, text="역추적 실행", command=self.run_reverse)
         btn.pack(side="right")
         self.run_buttons.append(btn)
@@ -304,7 +304,12 @@ class App(tk.Tk):
                 self.log_box.configure(state="disabled")
         except queue.Empty:
             pass
-        self.after(100, self._drain_log)
+        self._drain_id = self.after(100, self._drain_log)
+
+    def destroy(self):
+        if getattr(self, "_drain_id", None):
+            self.after_cancel(self._drain_id)
+        super().destroy()
 
     def pick_files(self):
         files = filedialog.askopenfilenames(
@@ -346,7 +351,7 @@ class App(tk.Tk):
         if not self.last_md:
             messagebox.showinfo("발제 도우미", "아직 만든 발제 노트가 없습니다.")
             return
-        open_text(self.last_md)
+        self.show(self.last_md)
 
     def open_output(self):
         out = Path(self.config_data["output_dir"])
@@ -432,11 +437,9 @@ class App(tk.Tk):
         on_done(result)
 
     def _done_notes(self, result):
-        html_path = result["html"]
-        self.last_html, self.last_md = html_path, result["md"]
-        self.log("[마크다운 열기]로 정리본(.md)을 볼 수 있습니다.")
-        self.log("완료. 브라우저로 발제 노트를 엽니다.")
-        webbrowser.open(Path(html_path).resolve().as_uri())
+        self.last_html, self.last_md = result["html"], result["md"]
+        self.log("완료. [결과 보기]로 다시 볼 수 있습니다.")
+        self.show(result["md"])
 
     # ------------------------------------------------------------ OSINT
     def _watchlist_path(self):
@@ -485,20 +488,24 @@ class App(tk.Tk):
             self.log("다른 작업이 진행 중이라 자동 실행을 다음으로 미룹니다.")
             self._schedule_auto()
 
+    def show(self, path):
+        """결과를 프로그램 안 '결과 보기' 창으로 연다(링크는 눌러서 연다)."""
+        self.log(f"결과 보기: {Path(path).resolve()}")
+        ReportViewer(self, path, open_text=open_text, open_path=open_path)
+
     def open_latest(self, pattern):
         files = sorted(Path(self.config_data["output_dir"]).glob(pattern), key=lambda p: p.stat().st_mtime)
         if not files:
-            messagebox.showinfo("발제 도우미", "아직 만든 리포트가 없습니다.")
+            messagebox.showinfo("발제 도우미", "아직 만든 결과가 없습니다.")
             return
-        self.log(f"열기: {files[-1].resolve()}")
-        webbrowser.open(files[-1].resolve().as_uri())
+        self.show(files[-1])
 
     def _done_radar(self, result, auto):
         self.log(f"레이더 완료: 후보 {len(result['cands'])}건")
-        self.log(f"리포트: {Path(result['html']).resolve()}")
-        self.log("[리포트 열기]로 다시 볼 수 있습니다. 마크다운(.md)은 같은 폴더에 있습니다.")
+        self.log(f"리포트: {Path(result['md']).resolve()}")
+        self.log("[리포트 열기]로 다시 볼 수 있습니다.")
         if not auto:
-            webbrowser.open(Path(result["html"]).resolve().as_uri())
+            self.show(result["md"])
         self._schedule_auto()
 
     def _schedule_auto(self):
@@ -519,7 +526,7 @@ class App(tk.Tk):
         self._auto_running = False
         use_ai = bool(self._ai_provider())
         self._run_job(lambda cfg: reverse.run(text, cfg, log=self.log, use_ai=use_ai),
-                      lambda res: webbrowser.open(Path(res["html"]).resolve().as_uri()))
+                      lambda res: self.show(res["md"]))
 
 
 def selftest(result_file):
@@ -540,6 +547,11 @@ def selftest(result_file):
                          materials_dir=resource("samples/materials"), hours=0,
                          use_history=False, out_dir="selftest_out", log=lambda m: None)
         lines.append(f"pipeline ok {len(r['clusters'])}")
+        app2 = App()
+        v = ReportViewer(app2, r["md"])
+        v.update()
+        lines.append(f"viewer ok {len(v.links)} links")
+        app2.destroy()
         from osint import radar, reverse  # noqa: F401 - exe에 포함됐는지 확인
         w = osint_watchlist.load()
         lines.append(f"osint watchlist ok {len(w['entities'])} entities")

@@ -65,7 +65,8 @@ def _md_link(text, url):
 
 
 def _md_article(a):
-    line = f"{_t(a.published)} {a.press} · {_md_link(a.title, a.link)}"
+    title = f"{a.title_ko} (원문: {a.title})" if getattr(a, "title_ko", "") else a.title
+    line = f"{_t(a.published)} {a.press} · {_md_link(title, a.link)}"
     if a.naver_link and a.naver_link != a.link:
         line += f" · {_md_link('네이버', a.naver_link)}"
     return line
@@ -143,7 +144,7 @@ def to_markdown(clusters, notes, generated_at, ai_text=None, top=10, meta=None):
         r = notes[c.id]["release"]
         out.append(f"### [{c.id}] {c.headline}")
         out.append("")
-        out.append(f"- 판단: **{r['verdict']}** ({r['kind']})")
+        out.append(f"- 판단: {r['verdict']} ({r['kind']})")
         out.append(f"- 근거: {' / '.join(r['reasons']) or '-'}")
         out.append("- 살릴 앵글")
         out += [f"  - {x}" for x in r["angles"]] or ["  - -"]
@@ -181,8 +182,11 @@ def to_markdown(clusters, notes, generated_at, ai_text=None, top=10, meta=None):
     out += ["---", "", f"## 6. 외신 ({len(sec['foreign'])}건)", ""]
     if not sec["foreign"]:
         out.append("> 외신 수집을 끄거나 결과가 없다.")
+    if meta.get("translation"):
+        out += [f"> {meta['translation']}", ""]
     for c in sec["foreign"]:
-        out.append(f"### {c.headline}")
+        ko = getattr(c.rep or c.articles[0], "title_ko", "")
+        out.append(f"### {ko or c.headline}")
         out.append("")
         if c.brands:
             out.append(f"- 브랜드: {', '.join(c.brands)}")

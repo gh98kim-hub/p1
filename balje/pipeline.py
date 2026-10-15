@@ -94,6 +94,21 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
     if body_cfg.get("enabled") and not inputs:
         fetch_bodies(clusters, body_cfg, log)
 
+    # 외신 제목 번역(Claude·Gemini 키가 있을 때)
+    translation = ""
+    foreign_arts = [a for c in clusters if c.foreign for a in c.articles[:6]][:60]
+    if foreign_arts:
+        from .translate import needs_translation, translate_items
+        tr, label = translate_items([(str(i), a.title, a.description) for i, a in enumerate(foreign_arts)],
+                                    config, log)
+        for i, a in enumerate(foreign_arts):
+            if str(i) in tr:
+                a.title_ko = tr[str(i)]["title"]
+        if label:
+            translation = f"번역: {label}로 외신 제목 {len(tr)}건"
+        elif any(needs_translation(a.title) for a in foreign_arts):
+            translation = "번역: 안 함(설정에 Claude 또는 Gemini API 키가 있어야 외신 제목을 번역합니다)"
+
     # 3) AI 발제안(선택)
     ai_text = None
     if use_ai:
@@ -113,6 +128,7 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
         "materials": [m["name"] for m in materials],
         "trends": trends,
         "brands": brands,
+        "translation": translation,
     }
     shown = analyze.sort_clusters(clusters, config.get("sort", "latest"))
     meta["sort"] = config.get("sort", "latest")

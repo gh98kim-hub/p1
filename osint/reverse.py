@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from balje import collect
-from balje.llm import PROVIDERS
+from balje.llm import PROVIDERS, parse_json, strip_bold
 
 from . import prompts, report
 from . import watchlist as wl
@@ -18,18 +18,6 @@ from .sources import courts, news, sec_edgar
 
 def _now():
     return datetime.now(timezone.utc)
-
-
-def parse_json(text):
-    """AI 응답에서 JSON 객체를 꺼낸다(코드 블록·앞뒤 설명이 붙어도)."""
-    if not text:
-        return None
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
-    raw = m.group(1) if m else text[text.find("{"): text.rfind("}") + 1]
-    try:
-        return json.loads(raw)
-    except (json.JSONDecodeError, ValueError):
-        return None
 
 
 def heuristic_extract(article, watch):
@@ -129,20 +117,25 @@ def run(article_or_url, config, log=print, use_ai=True, out_dir=None, now=None):
 
     sources = search_sources(ext, config, log=log, now=now)
     log(f"1차 출처 후보 {len(sources)}건")
+    if sources:
+        from balje.translate import translate_items
+        tr, _ = translate_items([(str(i), s.title, s.text) for i, s in enumerate(sources)], config, log)
+        for i, s in enumerate(sources):
+            if str(i) in tr:
+                s.meta["ko_title"] = tr[str(i)]["title"]
     ai = {}
     for n in names:
         label, fn = PROVIDERS[n]
         log(f"{label} 역설계 리포트 작성 중...")
-        ai[label] = fn(prompts.REVERSE_SYSTEM, prompts.REVERSE_USER.format(
+        ai[label] = strip_bold(fn(prompts.REVERSE_SYSTEM, prompts.REVERSE_USER.format(
             article=article[:12000], claims=json.dumps(ext.get("claims", []), ensure_ascii=False, indent=1),
-            sources=sources_text(sources)), config)
+            sources=sources_text(sources)), config))
 
     out = Path(out_dir or config.get("output_dir", "output"))
     out.mkdir(parents=True, exist_ok=True)
     stamp = now.astimezone(report.KST).strftime("%Y%m%d_%H%M")
     d = {"now": now, "url": url, "article": article, "sources": sources, "ai": ai, "extract": ext}
-    md_path, html_path = out / f"역추적_{stamp}.md", out / f"역추적_{stamp}.html"
+    md_path = out / f"역추적_{stamp}.md"
     md_path.write_text(report.reverse_markdown(d), encoding="utf-8")
-    html_path.write_text(report.reverse_html(d), encoding="utf-8")
     log(f"저장: {md_path}")
-    return {"md": md_path, "html": html_path, "sources": sources, "ai": ai, "extract": ext}
+    return {"md": md_path, "sources": sources, "ai": ai, "extract": ext}

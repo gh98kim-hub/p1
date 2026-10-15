@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from balje import pitch
-from balje.llm import PROVIDERS
+from balje.llm import PROVIDERS, strip_bold
 
 from . import candidates as cand_mod
 from . import domestic, prompts, report
@@ -14,17 +14,17 @@ from . import watchlist as wl
 from .sources import courts, nhtsa, news, sec_edgar
 from .store import Store
 
-QUESTION_TEMPLATES = {
-    "sec": "\"{company} 공시({form}, {date})에 귀사 관련 내용이 나왔는데, 계약·투자 규모와 시점을 확인해 줄 수 있습니까?\"",
-    "courts": "\"미국 법원에 '{case}' 사건이 올라와 있는데, 회사 입장과 예상 영향(배상·생산 차질)은 어느 정도로 봅니까?\"",
-    "nhtsa": "\"NHTSA 리콜({campaign}) 대상 대수와 국내 판매 차량 중 같은 부품을 쓰는 차종이 있는지 확인해 줄 수 있습니까?\"",
-    "gov_press": "\"현지 정부 발표({source}, {date}) 내용과 본사 투자·고용 계획이 같은지, 인센티브 조건은 무엇인지 확인 부탁합니다.\"",
-    "pr_wire": "\"파트너사 발표({source}, {date})에 귀사가 언급됐는데, 국내 발표 계획과 사업 규모는 어떻게 됩니까?\"",
-    "eu_comp": "\"EU 경쟁총국 자료({date})에 귀사 관련 건이 있는데, 심사 일정과 예상 결론을 어떻게 봅니까?\"",
-    "local_media": "\"현지 매체({source}) 보도 내용이 사실인지, 현지 법인 공식 입장이 있습니까?\"",
-    "trade_media": "\"해외 업계지({source}) 보도 내용에 대해 회사 측 확인이 가능합니까?\"",
-    "china_media": "\"중국 매체({source}) 보도와 관련해 현지 법인·합작사 측 사실관계를 확인해 줄 수 있습니까?\"",
-    "feeds": "\"{source} 발표 내용과 관련해 회사 측 확인이 가능합니까?\"",
+CHECK_TEMPLATES = {
+    "sec": "{company} 공시({form}, {date})에 나온 계약·투자 규모와 시점 — 회사 확인",
+    "courts": "'{case}' 사건 — 회사 입장, 예상 영향(배상·생산 차질)",
+    "nhtsa": "리콜 {campaign} — 미국 대상 대수, 국내 판매 차량 중 같은 부품 사용 여부",
+    "gov_press": "현지 정부 발표({source}, {date})와 본사 투자·고용 계획 일치 여부, 인센티브 조건",
+    "pr_wire": "파트너사 발표({source}, {date}) — 국내 발표 계획, 사업 규모",
+    "eu_comp": "EU 경쟁총국 건({date}) — 심사 일정, 예상 결론",
+    "local_media": "현지 매체({source}) 보도 사실 여부 — 현지 법인 공식 입장",
+    "trade_media": "업계지({source}) 보도 내용 — 회사 확인",
+    "china_media": "중국 매체({source}) 보도 — 현지 법인·합작사 사실관계",
+    "feeds": "{source} 발표 내용 — 회사 확인",
 }
 
 
@@ -142,7 +142,8 @@ def materials_text(cands, max_text=1500):
         lines.append(f"국내 보도(자동 검색): {dom}")
         for i, s in enumerate(c.signals[:6], 1):
             when = s.published.strftime("%Y-%m-%d") if s.published else "날짜 미상"
-            lines.append(f"[{c.id}-S{i}] 채널 {s.channel} | {s.source} | {when} | {s.title}")
+            lines.append(f"[{c.id}-S{i}] 채널 {s.channel} | {s.source} | {when} | {s.title}"
+                         + (f" (번역: {s.meta['ko_title']})" if s.meta.get("ko_title") else ""))
             lines.append(f"    URL: {s.url}")
             body = s.meta.get("doc_text") or s.text
             if body:
@@ -152,8 +153,14 @@ def materials_text(cands, max_text=1500):
     return "\n".join(lines)
 
 
+def _ko(s):
+    """번역이 있으면 '번역 (원문: …)', 없으면 원문."""
+    ko = s.meta.get("ko_title")
+    return f"{ko} (원문: {s.title})" if ko else s.title
+
+
 def skeleton(c, watch):
-    """AI 없이 만드는 발제 뼈대(형식 동일, 근거는 수집 자료만)."""
+    """자동 정리본(AI 발제문이 없을 때도 같은 형식). 근거는 수집 자료만 쓴다."""
     s = c.lead
     d = c.domestic
     if d is None:
@@ -162,29 +169,58 @@ def skeleton(c, watch):
         tag_ = "[선제 보도 후보 · 국내 미보도]"
     else:
         tag_ = f"[후속 발제 후보 · 국내 {d['count']}건]"
-    when = s.published.strftime("%Y-%m-%d") if s.published else "날짜 미상"
-    src_list = ", ".join(f"{x.source}({x.channel})" for x in c.signals[:5])
-    dom = "자동 검색 불가" if d is None else f"최근 {d['days']}일 '{' / '.join(d['queries'])}' {d['count']}건"
-    facts = [x.title for x in c.signals[:3]]
-    q_lines = []
+
+    def when(x):
+        return x.published.strftime("%Y-%m-%d") if x.published else "날짜 미상"
+
+    dom = "자동 검색 불가(네이버 키 없음)" if d is None else f"최근 {d['days']}일 '{' / '.join(d['queries'])}' {d['count']}건"
+    lines = [f"🚨 {tag_} {c.entity}" + (f" · {c.location}" if c.location else "")
+             + f" — {s.meta.get('ko_title') or s.title}", ""]
+    lines.append("- 출처" + (" (모자이크: 서로 다른 출처 결합)" if c.kind == "mosaic" else ""))
+    for i, x in enumerate(c.signals[:6], 1):
+        label = "1차" if i == 1 else f"{i}차"
+        lines.append(f"  {label}) {x.source} · {when(x)} · {_ko(x)}")
+        lines.append(f"      {x.url}")
+    lines.append(f"- 국내 보도: {dom}")
+    if d and d["examples"]:
+        for press, _, title, link in d["examples"][:2]:
+            lines.append(f"  · {press} {title}")
+            lines.append(f"      {link}")
+    lines.append("- 핵심 팩트(원문 기준)")
     for x in c.signals[:3]:
-        tpl = QUESTION_TEMPLATES.get(x.channel)
+        summary = x.meta.get("ko_text") or ""
+        lines.append(f"  · {x.meta.get('ko_title') or x.title}" + (f" — {summary}" if summary else ""))
+    checks = []
+    for x in c.signals[:4]:
+        tpl = CHECK_TEMPLATES.get(x.channel)
         if tpl:
-            q_lines.append(tpl.format(company=x.meta.get("company", x.source), form=x.meta.get("form", ""),
-                                      date=x.published.strftime("%Y-%m-%d") if x.published else "",
-                                      case=x.meta.get("case", x.title), campaign=x.meta.get("campaign", ""),
-                                      source=x.source))
-    return "\n".join([
-        f"🚨 **{tag_}** {c.entity}" + (f" · {c.location}" if c.location else "") + f" — {s.title}",
-        f"- **1차 출처:** {s.source} · {s.url} · {when}",
-        f"- **결합 소스(모자이크):** {src_list if c.kind == 'mosaic' else '단일 출처'}",
-        f"- **국내 보도:** {dom}",
-        "- **핵심 팩트(원문 제목):**", *[f"  - {f}" for f in facts],
-        "",
-        "📞 **홍보팀 크로스체크 & 뻗치기**", *[f"- {q}" for q in dict.fromkeys(q_lines)],
-        "",
-        "⚠️ AI 없이 만든 뼈대다. 원문을 열어 확인한 뒤 앵글을 잡는다.",
-    ])
+            checks.append(tpl.format(company=x.meta.get("company", x.source), form=x.meta.get("form", ""),
+                                     date=when(x), case=x.meta.get("case", x.title),
+                                     campaign=x.meta.get("campaign", ""), source=x.source))
+    checks.append("1차 출처 원문을 직접 열어 수치·날짜·주체 대조")
+    lines += ["", "✅ 체크리스트", *[f"  ☐ {q}" for q in dict.fromkeys(checks)]]
+    return "\n".join(lines)
+
+
+def translate(cands, config, log=print):
+    """후보 신호의 외국어 제목·요약을 한국어로(키가 있을 때). 반환: 상태 문구."""
+    from balje.translate import translate_items
+    sigs = {s.uid: s for c in cands for s in c.signals}
+    items = [(uid, s.title, s.text) for uid, s in sigs.items()]
+    if not items:
+        return ""
+    tr, label = translate_items(items, config, log)
+    for uid, v in tr.items():
+        if uid in sigs:
+            sigs[uid].meta["ko_title"] = v["title"]
+            if v.get("summary"):
+                sigs[uid].meta["ko_text"] = v["summary"]
+    if label:
+        return f"번역: {label}로 외신 {len(tr)}건"
+    from balje.translate import needs_translation
+    if any(needs_translation(t) for _, t, _ in items):
+        return "번역: 안 함(설정에 Claude 또는 Gemini API 키가 있어야 외신 제목을 번역합니다)"
+    return ""
 
 
 def ai_reports(cands, config, log=print):
@@ -200,7 +236,7 @@ def ai_reports(cands, config, log=print):
         if n in PROVIDERS:
             label, fn = PROVIDERS[n]
             log(f"{label} 발제문 작성 중...")
-            out[label] = fn(system, user, config)
+            out[label] = strip_bold(fn(system, user, config))
     return out
 
 
@@ -248,20 +284,21 @@ def run(config, log=print, use_ai=False, out_dir=None, now=None, only=None, noti
                         pass
                     time.sleep(0.15)
 
+    tr_note = translate(cands, config, log) if cands else ""
     ai = ai_reports(cands, config, log) if (use_ai and cands) else None
     out = Path(out_dir or config.get("output_dir", "output"))
     out.mkdir(parents=True, exist_ok=True)
     stamp = now.astimezone(report.KST).strftime("%Y%m%d_%H%M")
-    md_path, html_path = out / f"OSINT리포트_{stamp}.md", out / f"OSINT리포트_{stamp}.html"
+    md_path = out / f"OSINT리포트_{stamp}.md"
     skel = {c.id: skeleton(c, watch) for c in cands}
     data = {"now": now, "cands": cands, "skeletons": skel, "ai": ai, "status": status,
-            "signals": signals, "new": new, "lookback": ocfg.get("lookback_days", 7)}
+            "signals": signals, "new": new, "lookback": ocfg.get("lookback_days", 7),
+            "use_ai": bool(use_ai), "translation": tr_note}
     md_path.write_text(report.radar_markdown(data), encoding="utf-8")
-    html_path.write_text(report.radar_html(data), encoding="utf-8")
     log(f"후보 {len(cands)}건 · 저장: {md_path}")
 
     if notify and cands and config.get("telegram_bot_token") and config.get("telegram_chat_id"):
         from . import notify as nt
         sent = nt.send_candidates(config, cands, skel, ai)
         log(f"텔레그램 전송 {sent}건")
-    return {"md": md_path, "html": html_path, "cands": cands, "status": status, "signals": signals, "ai": ai}
+    return {"md": md_path, "cands": cands, "status": status, "signals": signals, "ai": ai}

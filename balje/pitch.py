@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 
 from .analyze import _contains
-from .llm import PROVIDERS
+from .llm import PROVIDERS, strip_bold
 
 GENERIC_CHECKS = ["보도 내용 원문(회사·기관 발표) 확인", "회사 측 공식 입장 확인"]
 
@@ -221,7 +221,7 @@ def ai_pitches(clusters, materials, notes, config, trends=()):
 
     def work(name):
         label, fn = PROVIDERS[name]
-        results[label] = fn(system, user, config)
+        results[label] = strip_bold(fn(system, user, config))
 
     threads = [threading.Thread(target=work, args=(n,)) for n in names]
     for t in threads:

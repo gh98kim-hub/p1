@@ -1,6 +1,8 @@
 """AI 호출(Claude·Gemini). 실패하면 예외 대신 안내 문구를 돌려준다."""
 
+import json
 import os
+import re
 
 
 def call_claude(system, user, config):
@@ -88,3 +90,32 @@ def call_gemini(system, user, config):
 
 
 PROVIDERS = {"claude": ("Claude", call_claude), "gemini": ("Gemini", call_gemini)}
+
+
+def parse_json(text):
+    """AI 응답에서 JSON 객체를 꺼낸다(코드 블록·앞뒤 설명이 붙어도)."""
+    if not text:
+        return None
+    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    raw = m.group(1) if m else text[text.find("{"): text.rfind("}") + 1]
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def available_provider(config):
+    """키가 있는 AI. 창에서 고른 AI를 먼저, 없으면 키가 있는 쪽."""
+    has = {
+        "claude": bool(config.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")),
+        "gemini": bool(config.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")
+                       or os.environ.get("GOOGLE_API_KEY")),
+    }
+    first = config.get("ai", {}).get("provider", "claude")
+    order = ["gemini", "claude"] if first == "gemini" else ["claude", "gemini"]
+    return next((n for n in order if has[n]), None)
+
+
+def strip_bold(text):
+    """마크다운 굵게 표시(**) 제거."""
+    return (text or "").replace("**", "")

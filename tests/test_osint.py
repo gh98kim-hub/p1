@@ -249,9 +249,13 @@ def test_radar_end_to_end(tmp_path, fake_net):
     kinds = {(c.kind, c.entity, c.location) for c in res["cands"]}
     assert ("mosaic", "가상자동차", "테스트주 오크카운티") in kinds
     md = res["md"].read_text(encoding="utf-8")
-    assert "[국내 보도 미확인]" in md and "📞" in md and "채널 상태" in md
-    html = res["html"].read_text(encoding="utf-8")
-    assert "OSINT 데스크 리포트" in html
+    assert "[국내 보도 미확인]" in md and "✅ 체크리스트" in md and "☐ " in md and "채널 상태" in md
+    assert "**" not in md and "홍보팀" not in md and "뼈대" not in md
+    assert "AI 발제문: 꺼짐" in md
+    # 출처마다 URL이 한 줄씩 붙는다(결과 보기 창에서 눌러 연다)
+    assert "\n      https://news.google.com/rss/articles/GOV1" in md
+    assert "1차) Testland Governor" in md and "2차) Riverton Daily" in md
+    assert not list((tmp_path / "out").glob("*.html"))
     # SEC 공시 원문 일부를 후보 자료로 붙인다
     sec_c = [s for c in res["cands"] for s in c.signals if s.channel == "sec"]
     assert sec_c and sec_c[0].meta["doc_text"] == "Fictional exhibit text"
@@ -275,7 +279,9 @@ def test_radar_ai_prompt_and_split(tmp_path, fake_net, monkeypatch):
     assert "### 후보 C1" in seen["user"] and "국내 보도(자동 검색)" in seen["user"]
     parts = report.split_ai(res["ai"]["Claude"])
     assert set(parts) == {"C1", "C2"}
-    assert "Claude 발제문" in res["html"].read_text(encoding="utf-8")
+    md = res["md"].read_text(encoding="utf-8")
+    assert "[Claude 발제문 초안 — 원문 확인 후 사용]" in md and "✅ 체크리스트" in seen["user"]
+    assert "홍보팀" not in seen["user"] and "**" not in seen["user"]
 
 
 def test_telegram_send(monkeypatch, tmp_path, fake_net):
@@ -375,3 +381,60 @@ def test_nhtsa_base_model_and_400_empty(monkeypatch):
     monkeypatch.setattr(http, "get_json", other_400)
     with pytest.raises(urllib.error.HTTPError):
         nhtsa.recalls_for("hyundai", "X", 2026)
+
+
+# ---------------------------------------------------------------- 번역
+
+def _fake_translator(monkeypatch, calls):
+    from balje import translate as tmod
+
+    def fake(system, user, config):
+        calls.append((system, user, config["ai"].get("effort")))
+        items = json.loads(user[user.index("["):])
+        return json.dumps({it["id"]: {"title": "번역:" + it["title"][:20], "summary": "요약"} for it in items})
+
+    monkeypatch.setattr(tmod, "available_provider", lambda config: "claude")
+    monkeypatch.setitem(tmod.PROVIDERS, "claude", ("Claude", fake))
+
+
+def test_radar_translates_foreign_titles(tmp_path, fake_net, monkeypatch):
+    calls = []
+    _fake_translator(monkeypatch, calls)
+    res = radar.run(_config(tmp_path), log=lambda m: None, out_dir=tmp_path / "out", now=NOW)
+    md = res["md"].read_text(encoding="utf-8")
+    assert calls and calls[0][2] == "low"            # AI 발제문을 꺼도 번역은 한다(가벼운 설정)
+    assert "번역: Claude로 외신" in md
+    assert "번역:Governor announces A (원문: Governor announces Acme Motors expansion in Oak County)" in md
+
+
+def test_radar_without_key_says_why_not_translated(tmp_path, fake_net, monkeypatch):
+    from balje import translate as tmod
+    monkeypatch.setattr(tmod, "available_provider", lambda config: None)
+    res = radar.run(_config(tmp_path), log=lambda m: None, out_dir=tmp_path / "out", now=NOW)
+    assert "Claude 또는 Gemini API 키가 있어야" in res["md"].read_text(encoding="utf-8")
+
+
+def test_translate_skips_korean_and_bad_response(monkeypatch):
+    from balje import translate as tmod
+    monkeypatch.setattr(tmod, "available_provider", lambda config: "claude")
+    monkeypatch.setitem(tmod.PROVIDERS, "claude", ("Claude", lambda s, u, c: "> Claude 실패: 키 오류"))
+    out, label = tmod.translate_items([("1", "한국어 제목", ""), ("2", "English title", "")], {"ai": {}},
+                                      log=lambda m: None)
+    assert out == {} and label == "Claude"
+    out, label = tmod.translate_items([("1", "한국어 제목", "")], {"ai": {}}, log=lambda m: None)
+    assert out == {} and label is None
+
+
+# ---------------------------------------------------------------- 결과 보기 창
+
+def test_viewer_parse_inline_links_and_bold():
+    from balje.viewer import line_style, parse_inline
+    segs = parse_inline("10-13 가상일보 · [\\[단독\\] 제목](<https://e.com/a?b=1>) · 원문 https://x.org/p. **판단** 끝")
+    kinds = [(t, k, u) for t, k, u in segs if k != "text"]
+    assert kinds == [("[단독] 제목", "link", "https://e.com/a?b=1"), ("https://x.org/p", "link", "https://x.org/p"),
+                     ("판단", "bold", None)]
+    assert line_style("## 발제 후보") == ("h2", "발제 후보")
+    assert line_style("|---|---|")[0] == "skip"
+    assert line_style("| 브랜드 | 기사 |") == ("body", "브랜드   기사")
+    assert line_style("  - [ ] 확인") == ("body", "  ☐ 확인")
+    assert line_style("- 출처")[1] == "• 출처"
