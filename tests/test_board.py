@@ -242,3 +242,126 @@ def test_dashboard_window(tmp_path, fake_net, monkeypatch, tk_root):
     d._on_group()
     assert d.table.get_children()
     d.destroy()
+
+
+# ---------------------------------------------------------------- [AI 번역] 버튼
+
+def test_detail_texts_round_trip():
+    detail = [bmod.title("Acme Motors expands Oak County plant"), bmod.kv([("출처", "Testland Governor office")]),
+              bmod.bullets(["first point here", "둘째"]), bmod.link("Original press release title", "https://x"),
+              bmod.h("요약"), dict(bmod.sub("원문 제목: Original"), keep=True)]
+    texts = bmod.detail_texts(detail)
+    assert texts == {"0": "Acme Motors expands Oak County plant", "1.0": "Testland Governor office",
+                     "2.0": "first point here", "2.1": "둘째", "3": "Original press release title", "4": "요약"}
+    new = bmod.apply_texts(detail, {"0": "가상차, 공장 확장", "1.0": "테스트랜드 주지사실", "2.0": "첫째", "3": "원 보도자료"})
+    assert new[0]["x"] == "가상차, 공장 확장" and new[1]["x"] == [["출처", "테스트랜드 주지사실"]]
+    assert new[2]["x"] == ["첫째", "둘째"] and new[3]["x"] == "원 보도자료" and new[3]["url"] == "https://x"
+    assert detail[0]["x"].startswith("Acme")                 # 원본은 그대로
+
+
+def test_translate_texts(monkeypatch):
+    import json
+    from balje import translate as tmod
+    calls = []
+
+    def fake(system, user, config):
+        calls.append(config["ai"]["effort"])
+        items = json.loads(user[user.index("{"):])
+        return json.dumps({k: "번역:" + v[:8] for k, v in items.items()})
+
+    monkeypatch.setattr(tmod, "available_provider", lambda c: "claude")
+    monkeypatch.setitem(tmod.PROVIDERS, "claude", ("Claude", fake))
+    out = tmod.translate_texts({"a": "Hyundai expands its Georgia plant", "b": "현대차 공장", "c": "https://x.com/a-b-c-d",
+                                "d": "现代汽车本土销量"}, {"ai": {}}, log=lambda m: None)
+    assert set(out) == {"a", "d"} and calls == ["low"]        # 한국어·주소만 있는 글은 보내지 않는다
+    big = {str(i): "word " * 400 for i in range(5)}
+    tmod.translate_texts(big, {"ai": {}}, log=lambda m: None, max_chars=4500)
+    assert len(calls) == 1 + 3                                 # 길면 나눠 보낸다
+    monkeypatch.setitem(tmod.PROVIDERS, "claude", ("Claude", lambda s, u, c: "> Claude 구독 실패: 로그인이 필요합니다"))
+    with pytest.raises(RuntimeError, match="로그인이 필요합니다"):
+        tmod.translate_texts({"a": "Hyundai expands its Georgia plant"}, {"ai": {}}, log=lambda m: None)
+    monkeypatch.setattr(tmod, "available_provider", lambda c: None)
+    with pytest.raises(RuntimeError, match="구독 로그인"):
+        tmod.translate_texts({"a": "Hyundai expands its Georgia plant"}, {"ai": {}}, log=lambda m: None)
+    assert tmod.translate_texts({"a": "한국어만"}, {"ai": {}}) == {}
+
+
+def _wait(d):
+    import time
+    end = time.monotonic() + 5            # fake_net이 time.sleep을 바꿔 두므로 시각으로 잰다
+    while time.monotonic() < end:
+        d.update()
+        if not d._busy:
+            return
+    raise AssertionError("번역이 끝나지 않음")
+
+
+def test_dashboard_translate_buttons(tmp_path, fake_net, monkeypatch, tk_root):
+    from balje import translate as tmod
+    from balje.dashboard import Dashboard
+    sent = []
+
+    def fake_tr(texts, config, log=print, max_chars=8000):
+        sent.append(dict(texts))
+        return {k: "번역 " + v[:12] for k, v in texts.items() if tmod.has_foreign(v)}
+
+    monkeypatch.setattr(tmod, "translate_texts", fake_tr)
+    monkeypatch.setattr("balje.dashboard._ai_label", lambda cfg: "Claude")
+    cfg = _config(tmp_path)
+    res = radar.run(cfg, log=lambda m: None, out_dir=tmp_path / "out", now=NOW)
+    data = bmod.load(res["json"])
+    d = Dashboard(tk_root, data, res["json"], translate_config=lambda: cfg)
+    d.side.selection_set("all")
+    d._on_group()
+    d.update()
+    row = d.current_row
+    d.tr_btn.invoke()
+    _wait(d)
+    assert "row_title" in sent[0] and "0" in sent[0]          # 목록 제목 + 상세 제목
+    assert row["tr"]["title"].startswith("번역 ")
+    assert d.table.item(row["id"])["values"][3].startswith("번역 ")
+    body = d.text.get("1.0", "end")
+    assert "AI 번역본(Claude)" in body and row["tr"]["detail"][0]["x"] in body
+    assert d.orig_btn.winfo_manager() == "pack"
+    d.orig_btn.invoke()
+    assert row["detail"][0]["x"] in d.text.get("1.0", "end") and "AI 번역본" not in d.text.get("1.0", "end")
+    # 번역은 결과 파일에 남는다
+    again = bmod.load(res["json"])
+    assert [r for r in again["rows"] if r["id"] == row["id"]][0]["tr"]["title"] == row["tr"]["title"]
+    # 목록 제목 한꺼번에
+    sent.clear()
+    d.list_tr_btn.invoke()
+    _wait(d)
+    assert row["id"] not in sent[0]                          # 이미 번역한 행은 다시 보내지 않는다
+    assert all(str(d.table.item(i)["values"][3]).startswith("번역 ") or not tmod.has_foreign(
+        str(d.table.item(i)["values"][3])) for i in d.table.get_children())
+    d.destroy()
+
+
+def test_dashboard_translate_error_shows_message(tmp_path, fake_net, monkeypatch, tk_root):
+    from balje import translate as tmod
+    from balje.dashboard import Dashboard
+    shown = []
+
+    def boom(texts, config, log=print, max_chars=8000):
+        raise RuntimeError(tmod.NO_AI)
+
+    monkeypatch.setattr(tmod, "translate_texts", boom)
+    monkeypatch.setattr("tkinter.messagebox.showwarning", lambda title, msg, parent=None: shown.append(msg))
+    cfg = _config(tmp_path)
+    res = radar.run(cfg, log=lambda m: None, out_dir=tmp_path / "out", now=NOW)
+    d = Dashboard(tk_root, bmod.load(res["json"]), res["json"], translate_config=lambda: cfg)
+    d.update()
+    d.tr_btn.invoke()
+    _wait(d)
+    assert shown == [tmod.NO_AI] and str(d.tr_btn["state"]) == "normal"
+    d.destroy()
+
+
+def test_dashboard_without_translator_hides_buttons(tmp_path, fake_net, tk_root):
+    from balje.dashboard import Dashboard
+    res = radar.run(_config(tmp_path), log=lambda m: None, out_dir=tmp_path / "out", now=NOW)
+    d = Dashboard(tk_root, bmod.load(res["json"]), res["json"])
+    d.update()
+    assert not d.tr_btn.winfo_ismapped() and not hasattr(d, "list_tr_btn")
+    d.destroy()

@@ -1,12 +1,14 @@
 """결과 화면(대시보드): 왼쪽 분류 · 가운데 목록 · 아래 상세. 링크는 [원문 열기] 버튼으로 연다."""
 
 import re
+import threading
 import tkinter as tk
 import urllib.parse
 import webbrowser
 from pathlib import Path
 from tkinter import ttk
 
+from . import board as board_mod
 from .viewer import line_style, parse_inline
 
 FAMILY = "Malgun Gothic"
@@ -20,15 +22,23 @@ def _num(v):
         return None
 
 
+def _ai_label(cfg):
+    from .llm import available_provider
+    return {"claude": "Claude", "gemini": "Gemini"}.get(available_provider(cfg) or "", "AI")
+
+
 def _domain(url):
     host = urllib.parse.urlparse(url or "").netloc.lower()
     return host[4:] if host.startswith("www.") else host
 
 
 class Dashboard(tk.Toplevel):
-    def __init__(self, master, data, path=None, open_path=None, open_text=None):
+    def __init__(self, master, data, path=None, open_path=None, open_text=None, translate_config=None):
+        """translate_config: [AI 번역]에 쓸 설정을 돌려주는 함수(창 스레드에서 부름). 없으면 번역 버튼을 숨긴다."""
         super().__init__(master)
         self.data = data
+        self._tr_config = translate_config
+        self._busy = False
         self.path = Path(path) if path else None
         self._open_path = open_path
         self._open_text = open_text
@@ -82,6 +92,9 @@ class Dashboard(tk.Toplevel):
                             command=self._fill_rows).pack(side="left")
         self.count_label = ttk.Label(bar, text="", foreground="#666")
         self.count_label.pack(side="left", padx=12)
+        if self._tr_config:
+            self.list_tr_btn = ttk.Button(bar, text="목록 제목 AI 번역", command=self._translate_list)
+            self.list_tr_btn.pack(side="right", padx=(6, 0))
         if self.path:
             ttk.Button(bar, text="결과 폴더", command=self._folder).pack(side="right")
             md = self._md_file()
@@ -125,6 +138,10 @@ class Dashboard(tk.Toplevel):
         self.open_btn.pack(side="left")
         self.copy_btn = ttk.Button(act, text="링크 복사", command=self._copy_current, state="disabled")
         self.copy_btn.pack(side="left", padx=6)
+        self.tr_btn = ttk.Button(act, text="AI 번역", command=self._translate_current)
+        self.orig_btn = ttk.Button(act, text="원문 보기", command=self._toggle_original)
+        if self._tr_config:
+            self.tr_btn.pack(side="left", padx=(12, 0))
         self.site_label = ttk.Label(act, text="", foreground="#777")
         self.site_label.pack(side="left", padx=6)
         self.text = tk.Text(det, wrap="word", relief="solid", borderwidth=1, padx=16, pady=12,
@@ -199,7 +216,7 @@ class Dashboard(tk.Toplevel):
                 continue
             if self.only_new.get() and not r.get("new"):
                 continue
-            if q and q not in " ".join(str(v) for v in r["values"]).lower():
+            if q and q not in " ".join(str(v) for v in self._values(r) + r["values"]).lower():
                 continue
             out.append(r)
         col, rev = self.sort_state
@@ -207,7 +224,8 @@ class Dashboard(tk.Toplevel):
             i = int(col[1:])
 
             def key(r):
-                v = r["values"][i] if i < len(r["values"]) else ""
+                vals = self._values(r)
+                v = vals[i] if i < len(vals) else ""
                 n = _num(v)
                 return (0, n, "") if n is not None else (1, 0, str(v))
             out.sort(key=key, reverse=rev)
@@ -222,7 +240,7 @@ class Dashboard(tk.Toplevel):
                 tags.append("new")
             if r.get("warn"):
                 tags.append("warn")
-            self.table.insert("", "end", iid=r["id"], values=[str(v) for v in r["values"]], tags=tags)
+            self.table.insert("", "end", iid=r["id"], values=[str(v) for v in self._values(r)], tags=tags)
         total = self.counts.get(self.current_group, 0)
         self.count_label.configure(text=f"{len(rows)}건 표시" + (f" / 전체 {total}건" if len(rows) != total else ""))
         if rows:
@@ -257,12 +275,23 @@ class Dashboard(tk.Toplevel):
         self.open_btn.configure(state=state)
         self.copy_btn.configure(state=state)
         self.site_label.configure(text=_domain(url))
+        tr = (row or {}).get("tr") or {}
+        if tr.get("detail"):
+            self.orig_btn.configure(text="번역 보기" if row.get("show_orig") else "원문 보기")
+            self.orig_btn.pack(side="left", padx=(6, 0), after=self.tr_btn)
+        else:
+            self.orig_btn.pack_forget()
+        self.tr_btn.configure(state="disabled" if (self._busy or not row) else "normal")
         if not row:
             t.insert("end", "이 분류에는 자료가 없습니다.\n", "note")
             if self.current_group == "cand":
                 t.insert("end", "\n이번 수집에서 발제 후보로 묶인 것이 없다. 왼쪽 '전체 자료'에서 정부·기업·언론 자료를 직접 볼 수 있다.\n", "note")
         else:
-            for blk in row.get("detail", []):
+            detail = row.get("detail", [])
+            if tr.get("detail") and not row.get("show_orig"):
+                detail = tr["detail"]
+                t.insert("end", f"AI 번역본({tr.get('by', 'AI')}) — 원문과 대조해 쓴다. [원문 보기]로 바꿔 볼 수 있다.\n", "note")
+            for blk in detail:
                 self._block(blk)
         t.configure(state="disabled")
         t.yview_moveto(0)
@@ -341,6 +370,139 @@ class Dashboard(tk.Toplevel):
         self.text.tag_bind(name, "<Button-1>", lambda e, u=url: self._open(u))
         self.text.tag_bind(name, "<Enter>", lambda e: self.text.configure(cursor="hand2"))
         self.text.tag_bind(name, "<Leave>", lambda e: self.text.configure(cursor="arrow"))
+
+    # ------------------------------------------------------------ AI 번역
+    def _title_index(self):
+        """지금 표에서 제목 칸(늘어나는 칸) 위치."""
+        g = self.groups.get(self.current_group) or {}
+        cols = self.data["columns"].get(g.get("cols"), [])
+        return next((i for i, c in enumerate(cols) if c[2]), None)
+
+    def _values(self, r):
+        vals = list(r["values"])
+        title = (r.get("tr") or {}).get("title")
+        i = self._title_index()
+        if title and i is not None and i < len(vals):
+            vals[i] = title
+        return vals
+
+    def _run_translation(self, work, done, waiting):
+        """번역은 시간이 걸리므로 별도 스레드로. 끝나면 창 스레드에서 done(결과) 또는 오류 표시."""
+        if self._busy:
+            return
+        self._busy = True
+        self.tr_btn.configure(state="disabled")
+        if hasattr(self, "list_tr_btn"):
+            self.list_tr_btn.configure(state="disabled")
+        self.site_label.configure(text=waiting)
+
+        def finish(result, error):
+            self._busy = False
+            self.tr_btn.configure(state="normal")
+            if hasattr(self, "list_tr_btn"):
+                self.list_tr_btn.configure(state="normal")
+            if error:
+                self.site_label.configure(text="번역 실패")
+                from tkinter import messagebox
+                messagebox.showwarning("AI 번역", error, parent=self)
+                return
+            done(result)
+
+        box = []
+
+        def bg():
+            try:
+                box.append((work(), None))
+            except Exception as e:  # noqa: BLE001 - 화면에 이유를 보여준다
+                box.append((None, str(e) or type(e).__name__))
+
+        def poll():
+            # 작업 스레드는 화면을 건드리지 않고, 창 스레드가 결과를 가져간다
+            if box:
+                finish(*box[0])
+            elif self.winfo_exists():
+                self.after(100, poll)
+
+        threading.Thread(target=bg, daemon=True).start()
+        self.after(100, poll)
+
+    def _translator(self):
+        from .translate import translate_texts
+        cfg = self._tr_config()
+        return lambda texts: translate_texts(texts, cfg, log=lambda m: None), _ai_label(cfg)
+
+    def _translate_current(self):
+        row = self.current_row
+        if not row or not self._tr_config:
+            return
+        tr = row.get("tr") or {}
+        if tr.get("detail"):          # 이미 번역함 → 번역본으로 돌아간다
+            row["show_orig"] = False
+            self._render(row)
+            return
+        texts = board_mod.detail_texts(row.get("detail", []))
+        i = self._title_index()
+        if i is not None and i < len(row["values"]):
+            texts["row_title"] = str(row["values"][i])
+        fn, label = self._translator()
+
+        def done(out):
+            if not out:
+                self.site_label.configure(text="번역할 외국어가 없습니다")
+                return
+            new = dict(row.get("tr") or {}, by=label)
+            if out.get("row_title"):
+                new["title"] = out.pop("row_title")
+            if out:
+                new["detail"] = board_mod.apply_texts(row.get("detail", []), out)
+            row["tr"], row["show_orig"] = new, False
+            self._after_translation([row])
+            self.site_label.configure(text=f"{label}로 번역했습니다")
+
+        self._run_translation(lambda: fn(texts), done, f"{label}로 번역 중… (구독 로그인은 1~2분 걸릴 수 있음)")
+
+    def _translate_list(self):
+        if not self._tr_config:
+            return
+        i = self._title_index()
+        if i is None:
+            return
+        rows = [r for r in self._visible_rows() if not (r.get("tr") or {}).get("title")][:200]
+        texts = {r["id"]: str(r["values"][i]) for r in rows if i < len(r["values"])}
+        fn, label = self._translator()
+        by_id = {r["id"]: r for r in rows}
+
+        def done(out):
+            if not out:
+                self.site_label.configure(text="번역할 외국어 제목이 없습니다")
+                return
+            changed = []
+            for rid, text in out.items():
+                if rid in by_id:
+                    by_id[rid]["tr"] = dict(by_id[rid].get("tr") or {}, title=text, by=label)
+                    changed.append(by_id[rid])
+            self._after_translation(changed)
+            self.site_label.configure(text=f"{label}로 제목 {len(changed)}건 번역했습니다")
+
+        self._run_translation(lambda: fn(texts), done, f"{label}로 제목 {len(texts)}건 번역 중…")
+
+    def _after_translation(self, rows):
+        for r in rows:
+            if self.table.exists(r["id"]):
+                self.table.item(r["id"], values=[str(v) for v in self._values(r)])
+        if self.current_row in rows:
+            self._render(self.current_row)
+        if self.path:
+            try:
+                board_mod.save(self.data, self.path)   # 다시 열어도 번역이 남게
+            except OSError:
+                pass
+
+    def _toggle_original(self):
+        row = self.current_row
+        if row and (row.get("tr") or {}).get("detail"):
+            row["show_orig"] = not row.get("show_orig")
+            self._render(row)
 
     # ------------------------------------------------------------ 동작
     def _open(self, url):

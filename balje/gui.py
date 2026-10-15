@@ -550,9 +550,16 @@ class App(tk.Tk):
             except (OSError, ValueError) as e:
                 messagebox.showerror("결과 보기", f"결과 파일을 읽지 못했습니다: {e}")
                 return
-            Dashboard(self, data, path, open_path=open_path, open_text=open_text)
+            Dashboard(self, data, path, open_path=open_path, open_text=open_text,
+                      translate_config=self._translate_config)
         else:
             ReportViewer(self, path, open_text=open_text, open_path=open_path)
+
+    def _translate_config(self):
+        """결과 화면 [AI 번역]용 설정. 첫 화면에서 고른 AI를 먼저 쓰고, '사용 안 함'이면 연결된 쪽."""
+        cfg = _merge(self.config_data, {})
+        cfg["ai"] = dict(cfg["ai"], provider=self._ai_provider() or cfg["ai"].get("provider", "claude"))
+        return cfg
 
     def open_latest(self, *patterns):
         """가장 최근 결과를 연다. 앞쪽 형식(결과 화면 JSON)을 우선한다."""
@@ -614,10 +621,10 @@ def selftest(result_file):
         v = ReportViewer(app2, r["md"])
         v.update()
         lines.append(f"viewer ok {len(v.links)} links")
-        d = Dashboard(app2, board_mod.load(r["json"]), r["json"])
+        d = Dashboard(app2, board_mod.load(r["json"]), r["json"], translate_config=app2._translate_config)
         d.update()
         lines.append(f"dashboard ok {len(d.table.get_children())} rows in {d.current_group}, "
-                     f"{len(d._widgets)} buttons")
+                     f"{len(d._widgets)} buttons, translate button {d.tr_btn.winfo_manager() or 'hidden'}")
         app2.destroy()
         from osint import radar, reverse  # noqa: F401 - exe에 포함됐는지 확인
         w = osint_watchlist.load()

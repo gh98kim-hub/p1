@@ -216,3 +216,47 @@ def notes_board(clusters, notes, generated_at, ai_text=None, top=10, meta=None):
             d.append(link(c.headline, a.link, f"{a.press} {when(c.latest, '%m-%d %H:%M')} · 기사 {len(c.articles)}건"))
         b.row(f"trend-{i}", ["trend"], [f"{t['category']} — {', '.join(t['brands'])}", len(t["clusters"])], d)
     return b.data
+
+
+# ---------------------------------------------------------------- 상세 번역([AI 번역] 버튼)
+
+_TEXT_BLOCKS = ("title", "sub", "p", "note", "h", "link")
+
+
+def detail_texts(detail):
+    """상세 블록에서 번역할 글을 {자리: 글}로 뽑는다. kv는 값만(항목 이름은 한국어)."""
+    out = {}
+    for i, b in enumerate(detail):
+        t, x = b.get("t"), b.get("x")
+        if b.get("keep"):            # 원문 대조용 블록
+            continue
+        if t in _TEXT_BLOCKS and isinstance(x, str) and x:
+            out[f"{i}"] = x
+        elif t in ("bullets", "checks"):
+            for j, s in enumerate(x or []):
+                out[f"{i}.{j}"] = s
+        elif t == "kv":
+            for j, (_, v) in enumerate(x or []):
+                out[f"{i}.{j}"] = v
+    return out
+
+
+def apply_texts(detail, tr):
+    """detail_texts의 자리에 번역을 넣은 새 블록 목록(원본은 그대로)."""
+    new = json.loads(json.dumps(detail, ensure_ascii=False))
+    for key, text in tr.items():
+        i, _, j = key.partition(".")
+        if not i.isdigit() or int(i) >= len(new):
+            continue
+        b = new[int(i)]
+        if not j:
+            if b.get("t") in _TEXT_BLOCKS:
+                b["x"] = text
+        elif j.isdigit():
+            items = b.get("x") or []
+            if int(j) < len(items):
+                if b.get("t") == "kv":
+                    items[int(j)][1] = text
+                else:
+                    items[int(j)] = text
+    return new

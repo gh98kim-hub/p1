@@ -30,7 +30,7 @@ def signal_detail(s, config, cand_ids=()):
     kind = classify.kind_of(s)
     d = [title(s.meta.get("ko_title") or s.title)]
     if s.meta.get("ko_title"):
-        d.append(sub("원문 제목: " + s.title))
+        d.append(dict(sub("원문 제목: " + s.title), keep=True))   # 원문 대조용이라 번역하지 않음
     d.append(link(f"{s.source} 원문", s.url, s.meta.get("domain", "")))
     d.append(kv([
         ("구분", f"{classify.kind_label(kind)} › {_ch_name(config, s.channel)}"),
@@ -50,7 +50,8 @@ def signal_detail(s, config, cand_ids=()):
     if s.meta.get("ko_text"):
         d += [h("요약(번역)"), p(s.meta["ko_text"])]
     if s.text:
-        d += [h("원문 요약" if s.meta.get("ko_text") else "요약"), p(_short(s.text))]
+        d += [h("원문 요약" if s.meta.get("ko_text") else "요약"),
+              dict(p(_short(s.text)), keep=bool(s.meta.get("ko_text")))]
     if s.meta.get("doc_text"):
         d += [h("1차 출처 원문 앞부분"), p(_short(s.meta["doc_text"], 2500))]
     if s.meta.get("index"):
