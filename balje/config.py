@@ -229,15 +229,12 @@ DEFAULTS = {
             "china_gov": {"enabled": True, "name": "중국 정부 발표", "weight": 4, "lang": "zh", "sites": [
                 "gov.cn", "miit.gov.cn", "mofcom.gov.cn", "ndrc.gov.cn", "samr.gov.cn", "customs.gov.cn"],
                 "priorities": ["high", "mid"]},
-            "kr_gov": {"enabled": True, "name": "한국 정부 보도자료", "weight": 2, "feeds": [
-                {"name": "산업통상자원부", "url": "https://www.korea.kr/rss/dept_motie.xml"},
-                {"name": "국토교통부", "url": "https://www.korea.kr/rss/dept_molit.xml"},
-                {"name": "환경부", "url": "https://www.korea.kr/rss/dept_me.xml"},
-                {"name": "기획재정부", "url": "https://www.korea.kr/rss/dept_moef.xml"},
-                {"name": "공정거래위원회", "url": "https://www.korea.kr/rss/dept_ftc.xml"}],
-                # 이 단어가 제목·요약에 있는 보도자료만 남긴다(추적 대상 기업명이 나와도 남김)
-                "terms": ["자동차", "완성차", "전기차", "수소차", "친환경차", "미래차", "자율주행", "모빌리티",
-                          "배터리", "이차전지", "리콜", "결함", "부품", "타이어", "충전", "관세", "자동차산업"]},
+            "kr_gov": {"enabled": True, "name": "한국 정부 보도자료", "weight": 2, "lang": "ko",
+                       # 정책브리핑·부처 사이트를 구글 뉴스로 검색(정책브리핑 RSS 주소는 공개 목록이 자주 바뀐다)
+                       "sites": ["korea.kr", "motie.go.kr", "molit.go.kr", "me.go.kr", "moef.go.kr", "ftc.go.kr"],
+                       "terms": ["자동차", "전기차", "수소차", "친환경차", "미래차", "자율주행", "모빌리티", "이차전지",
+                                 "배터리", "리콜", "자동차 부품", "타이어", "충전", "관세"],
+                       "terms_per_query": 7, "feeds": []},
             # ── 기업 발표
             "pr_wire": {"enabled": True, "name": "PR 와이어·파트너사 발표", "weight": 3, "sites": [
                 "prnewswire.com", "businesswire.com", "globenewswire.com", "accessnewswire.com",

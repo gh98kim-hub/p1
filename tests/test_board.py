@@ -34,6 +34,33 @@ def test_google_news_keeps_source_site(fake_net):
     assert sigs and sigs[0].meta["domain"] == "gov.example"
 
 
+def test_search_topics_uses_sites_and_korean_edition(monkeypatch):
+    from balje import collect
+    seen = []
+
+    def fake(q, hl="en-US", gl="US", ceid="US:en"):
+        seen.append((q, hl, ceid))
+        return collect.parse_google_news((FIX / "gov_press.xml").read_bytes(), q)
+
+    monkeypatch.setattr(news, "fetch_google_news", fake)
+    ch = {"name": "한국 정부", "lang": "ko", "sites": ["korea.kr", "molit.go.kr"], "terms": ["자동차", "자율주행", "리콜"],
+          "terms_per_query": 2}
+    sigs = news.search_topics("kr_gov", ch, 7, sleep=0)
+    assert seen[0] == ("(자동차 OR 자율주행) (site:korea.kr OR site:molit.go.kr) when:7d", "ko", "KR:ko")
+    assert len(seen) == 2 and len(sigs) == 2               # 같은 링크는 한 번만
+    assert sigs[0].channel == "kr_gov" and sigs[0].meta["domain"] == "gov.example"
+
+
+def test_read_feeds_all_failed_is_an_error(monkeypatch):
+    def boom(url):
+        raise OSError("HTTP Error 404: Not Found")
+
+    monkeypatch.setattr(news, "_http_get", boom)
+    with pytest.raises(RuntimeError, match="404"):
+        news.read_feeds([{"name": "가", "url": "https://x.example/a.xml"}], "kr_gov")
+    assert news.read_feeds([], "feeds") == []
+
+
 def test_federal_register_parse():
     sigs = fr.parse(_json("fed_register.json"), "q")
     assert [s.channel for s in sigs] == ["fed_register", "fed_register"]
@@ -47,7 +74,7 @@ def _gov_config(tmp_path, monkeypatch):
     cfg = _config(tmp_path)
     chs = cfg["osint"]["channels"]
     chs["fed_register"].update(enabled=True, topics=["batteries"])
-    chs["kr_gov"].update(enabled=True, feeds=[{"name": "가상부", "url": "https://kr.example/rss.xml"}])
+    chs["kr_gov"].update(enabled=True, sites=[], feeds=[{"name": "가상부", "url": "https://kr.example/rss.xml"}])
     orig = http.get_json
     terms = []
 

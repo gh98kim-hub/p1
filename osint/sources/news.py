@@ -12,6 +12,7 @@ from ..models import Signal
 
 LANG = {
     "en": ("en-US", "US", "US:en"),
+    "ko": ("ko", "KR", "KR:ko"),
     "zh": ("zh-CN", "CN", "CN:zh-Hans"),
 }
 
@@ -106,12 +107,46 @@ def parse_feed(xml_bytes, key, name, lang="en"):
 
 
 def read_feeds(feeds, key="feeds", log=None):
-    out = []
+    """피드를 모두 읽는다. 하나도 못 읽으면 오류를 낸다(채널 상태에 '정상 0건'으로 숨지 않게)."""
+    out, errors = [], []
     for f in feeds:
         try:
             raw, _ = _http_get(f["url"])
             out += parse_feed(raw, key, f.get("name", f["url"]), f.get("lang", "en"))
         except Exception as e:  # noqa: BLE001
+            errors.append(f"{f.get('name', f['url'])}: {e}")
             if log:
                 log(f"[RSS {f.get('name', f['url'])}] 실패: {e}")
+    if feeds and len(errors) == len(feeds):
+        raise RuntimeError("피드를 하나도 읽지 못했습니다 — " + "; ".join(errors)[:300])
+    return out
+
+
+def search_topics(key, channel, days, sleep=0.3, log=None):
+    """기업명 대신 주제어(자동차·배터리 …)와 사이트 조건으로 찾는다(정부 보도자료용)."""
+    hl, gl, ceid = LANG.get(channel.get("lang", "en"), LANG["en"])
+    when = f" when:{max(1, int(days))}d"
+    sites = [f"site:{s}" for s in channel.get("sites", [])]
+    site_q = (" " + (sites[0] if len(sites) == 1 else "(" + " OR ".join(sites) + ")")) if sites else ""
+    out, seen, errors = [], set(), 0
+    chunks = _chunks(channel.get("terms", []), channel.get("terms_per_query", 7))
+    for tc in chunks:
+        q = f"{_or(tc)}{site_q}{when}"
+        try:
+            items = fetch_google_news(q, hl, gl, ceid)
+        except Exception as e:  # noqa: BLE001
+            errors += 1
+            if log:
+                log(f"[{channel.get('name', key)}] 검색 실패: {e}")
+            if errors == len(chunks):
+                raise
+            continue
+        for a in items:
+            if a.link in seen:
+                continue
+            seen.add(a.link)
+            out.append(Signal(channel=key, title=a.title, url=a.link, published=a.published, source=a.press,
+                              text=a.description, lang=channel.get("lang", "en"), query=q,
+                              meta={"domain": domain_of(a.source_url)} if a.source_url else {}))
+        time.sleep(sleep)
     return out

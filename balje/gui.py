@@ -697,16 +697,14 @@ def _osint_net_checks():
 
     def krgov():
         from balje.config import load_config
+        from osint.classify import kind_of
         ch = load_config("none.json")["osint"]["channels"]["kr_gov"]
-        res = []
-        for f in ch["feeds"]:
-            try:
-                got = news.read_feeds([f], "kr_gov")
-                res.append(f"{f['name']} {len(got)}건" + (f" ({got[0].published.date() if got[0].published else '?'} "
-                                                          f"{got[0].title[:30]})" if got else ""))
-            except Exception as e:  # noqa: BLE001
-                res.append(f"{f['name']} ERROR {e}")
-        return "; ".join(res)
+        sigs = news.search_topics("kr_gov", dict(ch, terms=ch["terms"][:7]), 7, sleep=0.2)
+        kinds = {}
+        for x in sigs:
+            kinds[kind_of(x)] = kinds.get(kind_of(x), 0) + 1
+        doms = sorted({x.meta.get("domain", "?") for x in sigs})[:6]
+        return f"{len(sigs)} items; kinds={kinds}; domains={doms}; first={sigs[0].title[:50] if sigs else '-'}"
 
     rec("sec", sec)
     rec("nhtsa", nh)
@@ -714,22 +712,9 @@ def _osint_net_checks():
     rec("fed_register single", fr('"Hyundai"'))
     rec("fed_register OR", fr('"Hyundai" | "Kia"'))
     rec("fed_register topic", fr("lithium-ion batteries"))
-    rec("kr_gov feeds", krgov)
+    rec("kr_gov", krgov)
 
-    def kr_raw():
-        from balje.collect import _http_get
-        res = []
-        for u in ("https://www.korea.kr/rss/dept_motie.xml", "https://www.korea.kr/rss/pressrelease.xml",
-                  "https://www.korea.kr/rss/policy.xml", "https://www.korea.kr/rss/dept_molit.xml"):
-            try:
-                raw, cs = _http_get(u)
-                head = raw[:160].decode(cs or "utf-8", "replace").replace("\n", " ")
-                res.append(f"{u} {len(raw)}B cs={cs} items={raw.count(b'<item')} head={head!r}")
-            except Exception as e:  # noqa: BLE001
-                res.append(f"{u} ERROR {e}")
-        return " || ".join(res)
 
-    rec("kr_gov raw", kr_raw)
     for key in ("us_federal", "gov_press", "eu_comp", "china_gov", "pr_wire", "local_media", "global_media",
                 "china_media"):
         rec(key, gn(key))

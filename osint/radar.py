@@ -131,7 +131,9 @@ def collect(config, watch, store, now=None, log=print, only=None):
         return out
 
     def kr_gov_fn(ch):
-        got = news.read_feeds(ch.get("feeds", []), "kr_gov", log=log)
+        got = news.search_topics("kr_gov", ch, days, log=log) if ch.get("sites") else []
+        if ch.get("feeds"):
+            got += news.read_feeds(ch["feeds"], "kr_gov", log=log)
         for s in got:
             s.lang = "ko"
         names = [n for e in watch["entities"] for n in e.get("ko", [])]
