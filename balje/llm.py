@@ -119,9 +119,33 @@ def _explain(msg):
     return msg[:300]
 
 
-def call_claude(system, user, config):
+def _has_api_key(config):
+    return bool(config.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")
+                or os.environ.get("ANTHROPIC_AUTH_TOKEN"))
+
+
+def claude_mode(config):
+    """실제로 쓸 Claude 연결: 'subscription' / 'api' / None(연결 수단 없음).
+    API 방식이어도 키가 없고 Claude Code가 설치돼 있으면 구독 로그인으로 넘어간다."""
     if config.get("claude_auth") == "subscription":
+        return "subscription"
+    if _has_api_key(config):
+        return "api"
+    if find_claude():
+        return "subscription"
+    return None
+
+
+NO_CLAUDE = ("> Claude 실패: 연결 수단이 없습니다. [설정] → 'Claude 연결 방식'에서 '구독 로그인'을 고르고 "
+             "[Claude 로그인]을 하거나, API 키를 넣고 [저장]을 누르세요.")
+
+
+def call_claude(system, user, config):
+    mode = claude_mode(config)
+    if mode == "subscription":
         return call_claude_code(system, user, config)
+    if mode is None:
+        return NO_CLAUDE
     try:
         import anthropic
     except ImportError:
@@ -130,7 +154,10 @@ def call_claude(system, user, config):
     ai = config["ai"]
     # 설정 파일(GUI)에 저장한 키가 있으면 우선, 없으면 환경변수 ANTHROPIC_API_KEY
     key = config.get("anthropic_api_key") or None
-    client = anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic()
+    try:
+        client = anthropic.Anthropic(api_key=key) if key else anthropic.Anthropic()
+    except Exception as e:  # noqa: BLE001 - 키를 못 찾으면 SDK가 TypeError를 낸다
+        return f"{NO_CLAUDE} ({type(e).__name__})"
     try:
         with client.beta.messages.stream(
             model=ai.get("model", "claude-opus-5-5"),
@@ -152,6 +179,11 @@ def call_claude(system, user, config):
         return f"> Claude 실패: API 오류({e.status_code}) {e.message}"
     except anthropic.APIConnectionError:
         return "> Claude 실패: 네트워크 연결을 확인하세요."
+    except TypeError as e:
+        # 인증 수단을 못 찾았을 때(키 없음) SDK가 요청 직전에 내는 오류
+        if "authentication" in str(e).lower():
+            return NO_CLAUDE
+        return f"> Claude 실패: {e}"
 
     if response.stop_reason == "refusal":
         return "> Claude 실패: 모델이 응답을 거절했습니다. 자료 구성을 확인하세요."
@@ -222,10 +254,9 @@ def parse_json(text):
 
 def available_provider(config):
     """쓸 수 있는 AI. 창에서 고른 AI를 먼저, 없으면 준비된 쪽."""
-    claude_ok = (bool(find_claude()) if config.get("claude_auth") == "subscription"
-                 else bool(config.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")))
+    mode = claude_mode(config)
     has = {
-        "claude": claude_ok,
+        "claude": mode == "api" or (mode == "subscription" and bool(find_claude())),
         "gemini": bool(config.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")
                        or os.environ.get("GOOGLE_API_KEY")),
     }

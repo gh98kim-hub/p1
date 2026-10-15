@@ -114,7 +114,7 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
     if use_ai:
         provider = {"claude": "Claude", "gemini": "Gemini", "both": "Claude·Gemini"}.get(
             config["ai"].get("provider"), config["ai"].get("provider"))
-        log(f"{provider} 발제안 작성 중... (1~3분 걸릴 수 있음)")
+        log(f"{provider} 발제안 작성 중... (1~3분 걸릴 수 있음){_claude_route(config)}")
         ai_text = pitch.ai_pitches(clusters, materials, notes, config, trends)
 
     # 4) 출력
@@ -152,6 +152,15 @@ def run(config, inputs=(), materials_dir=None, hours=None, use_ai=False, top=10,
     log(f"\n저장: {md_path}\n      {html_path}" + (f"\n      {body_path}" if has_body else ""))
     return {"md": md_path, "html": html_path, "body_md": body_path if has_body else None,
             "clusters": shown, "ai_text": ai_text}
+
+
+def _claude_route(config):
+    """로그에 Claude 연결 방식을 밝힌다(구독/API 키)."""
+    if config["ai"].get("provider") not in ("claude", "both"):
+        return ""
+    from .llm import claude_mode
+    return {"subscription": " · Claude는 구독 로그인(Claude Code)으로", "api": " · Claude는 API 키로",
+            None: " · Claude 연결 수단 없음([설정] 확인)"}[claude_mode(config)]
 
 
 def body_candidates(clusters, issues=10):

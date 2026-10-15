@@ -412,9 +412,11 @@ def test_available_provider_subscription(monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
     monkeypatch.setattr(llm, "find_claude", lambda: "/usr/bin/claude")
     assert llm.available_provider({"claude_auth": "subscription", "ai": {}}) == "claude"
-    assert llm.available_provider({"claude_auth": "api", "ai": {}}) is None
+    # API 방식이어도 키가 없으면 설치된 Claude Code(구독)를 쓴다
+    assert llm.available_provider({"claude_auth": "api", "ai": {}}) == "claude"
     monkeypatch.setattr(llm, "find_claude", lambda: None)
     assert llm.available_provider({"claude_auth": "subscription", "ai": {}}) is None
+    assert llm.available_provider({"claude_auth": "api", "ai": {}}) is None
 
 
 def test_claude_code_status_parsing(monkeypatch):
@@ -428,3 +430,29 @@ def test_claude_code_status_parsing(monkeypatch):
     assert status({"loggedIn": True, "authMethod": "claude.ai"}) == (True, True, "로그인됨: 구독 계정(claude.ai)")
     assert status({"loggedIn": False, "authMethod": "none"}, 1)[1] is False
     assert "구독 요금제가 아님" in status({"loggedIn": True, "authMethod": "api_key"})[2]
+
+
+def test_claude_without_key_falls_back_or_explains(monkeypatch):
+    for k in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    # API 방식인데 키가 없고 Claude Code가 있으면 → 구독 로그인으로
+    seen = _fake_claude_code(monkeypatch, json.dumps({"is_error": False, "result": "구독으로 작성"}))
+    assert llm.call_claude("s", "u", {"claude_auth": "api", "ai": {}}) == "구독으로 작성"
+    assert seen["cmd"][1] == "-p"
+    # 둘 다 없으면 오류 대신 안내 문구(TypeError로 죽지 않는다)
+    monkeypatch.setattr(llm, "find_claude", lambda: None)
+    msg = llm.call_claude("s", "u", {"claude_auth": "api", "ai": {}})
+    assert msg.startswith("> Claude 실패: 연결 수단이 없습니다")
+    assert llm.claude_mode({"claude_auth": "api", "anthropic_api_key": "k"}) == "api"
+
+
+def test_claude_sdk_type_error_is_caught(monkeypatch):
+    class Boom:
+        def __init__(self, api_key=None):
+            raise TypeError("Could not resolve authentication method. Expected one of api_key, auth_token")
+
+    fake = types.ModuleType("anthropic")
+    fake.Anthropic = Boom
+    monkeypatch.setitem(sys.modules, "anthropic", fake)
+    msg = llm.call_claude("s", "u", {"claude_auth": "api", "anthropic_api_key": "x", "ai": {}})
+    assert "연결 수단이 없습니다" in msg
