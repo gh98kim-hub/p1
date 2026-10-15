@@ -17,7 +17,23 @@ from osint import watchlist as osint_watchlist
 from osint.watchlist import WatchlistError
 
 from . import pipeline
+from .llm import claude_code_status, open_login_window
 from .viewer import ReportViewer
+
+INSTALL_HELP = """구독(Pro·Max)으로 쓰려면 Anthropic의 공식 프로그램 'Claude Code'가 필요합니다.
+
+1) 설치: 시작 메뉴에서 'PowerShell'을 열고 아래 한 줄을 붙여 넣고 엔터
+   irm https://claude.ai/install.ps1 | iex
+
+2) 설치가 끝나면 이 프로그램을 껐다 켭니다.
+
+3) [설정] → [Claude 로그인]을 누르면 새 창과 브라우저가 열립니다.
+   Claude 계정(구독)으로 로그인하면 됩니다.
+
+4) [상태 확인]에 '로그인됨: 구독 계정'이 나오면 준비 끝.
+
+이 프로그램은 로그인 정보를 저장하지 않습니다. 글쓰기는 기자님 PC의 Claude Code가 하고,
+사용량은 구독 요금제 한도에서 차감됩니다."""
 from .config import _merge, brands_from_names, load_config, save_config
 
 FONT = ("Malgun Gothic", 10)
@@ -72,7 +88,8 @@ class SettingsDialog(tk.Toplevel):
     FIELDS = [
         ("naver_client_id", "네이버 Client ID", False),
         ("naver_client_secret", "네이버 Client Secret", True),
-        ("anthropic_api_key", "Claude API 키", True),
+        ("anthropic_api_key", "Claude API 키(API 방식일 때)", True),
+        ("ai.claude_code_model", "구독 방식 모델(비우면 기본)", False),
         ("gemini_api_key", "Gemini API 키", True),
         ("ai.gemini_model", "Gemini 모델", False),
         ("my_press", "우리 매체 이름", False),
@@ -89,6 +106,19 @@ class SettingsDialog(tk.Toplevel):
         self.transient(master)
         self.config_data = config
         self.vars = {}
+        cf = ttk.LabelFrame(self, text="Claude 연결 방식", padding=10)
+        cf.pack(fill="x", padx=14, pady=(14, 0))
+        self.claude_auth = tk.StringVar(value=config.get("claude_auth", "api"))
+        ttk.Radiobutton(cf, text="구독 로그인(Claude Pro·Max) — Claude Code로 연결, 요금제 안에서 사용",
+                        value="subscription", variable=self.claude_auth).grid(row=0, column=0, columnspan=3, sticky="w")
+        ttk.Radiobutton(cf, text="API 키 — 사용한 만큼 따로 과금", value="api",
+                        variable=self.claude_auth).grid(row=1, column=0, columnspan=3, sticky="w")
+        ttk.Button(cf, text="상태 확인", command=self.check_claude).grid(row=2, column=0, sticky="w", pady=(8, 0))
+        ttk.Button(cf, text="Claude 로그인", command=self.login_claude).grid(row=2, column=1, sticky="w", padx=6, pady=(8, 0))
+        ttk.Button(cf, text="설치 안내", command=self.install_help).grid(row=2, column=2, sticky="w", pady=(8, 0))
+        self.claude_status = ttk.Label(cf, foreground="#666", text="")
+        self.claude_status.grid(row=3, column=0, columnspan=3, sticky="w", pady=(6, 0))
+
         frm = ttk.Frame(self, padding=14)
         frm.pack(fill="both", expand=True)
         for row, (key, label, secret) in enumerate(self.FIELDS):
@@ -114,6 +144,20 @@ class SettingsDialog(tk.Toplevel):
         self.saved = None
         self.grab_set()
 
+    def check_claude(self):
+        installed, logged_in, msg = claude_code_status()
+        self.claude_status.configure(text=msg, foreground="#1d7a46" if logged_in else "#9a5b00")
+
+    def login_claude(self):
+        if not open_login_window():
+            self.install_help()
+            return
+        self.claude_status.configure(
+            text="새 창에서 브라우저 로그인을 마친 뒤 [상태 확인]을 누르세요.", foreground="#666")
+
+    def install_help(self):
+        messagebox.showinfo("Claude Code 설치", INSTALL_HELP, parent=self)
+
     def _get(self, key):
         if key.startswith("ai."):
             return self.config_data.get("ai", {}).get(key[3:], "")
@@ -128,6 +172,7 @@ class SettingsDialog(tk.Toplevel):
                 values[key] = var.get().strip()
         names = [n.strip() for n in re.split(r"[,\n]", self.brands_box.get("1.0", "end")) if n.strip()]
         values["brands"] = brands_from_names(list(dict.fromkeys(names)), self.config_data.get("brands", []))
+        values["claude_auth"] = self.claude_auth.get()
         save_config(values)
         self.saved = values
         self.destroy()

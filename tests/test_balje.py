@@ -366,3 +366,65 @@ def test_html_internal_links_all_resolve(tmp_path, monkeypatch):
 def test_markdown_links_escape_brackets():
     from balje.report import _md_link
     assert _md_link("[단독] 제목", "https://e.com/a(b)") == "[\\[단독\\] 제목](<https://e.com/a(b)>)"
+
+
+# ---------------------------------------------------------------- Claude 구독(Claude Code) 연결
+
+def _fake_claude_code(monkeypatch, stdout, returncode=0):
+    seen = {}
+
+    def fake_run(cmd, input=None, capture_output=None, cwd=None, env=None, timeout=None, **kw):
+        sp = cmd[cmd.index("--system-prompt-file") + 1]
+        seen.update(cmd=cmd, input=input.decode("utf-8"), cwd=cwd, env=env,
+                    system=Path(sp).read_text(encoding="utf-8"))
+        return types.SimpleNamespace(stdout=stdout.encode("utf-8"), stderr=b"", returncode=returncode)
+
+    monkeypatch.setattr(llm, "find_claude", lambda: "/usr/bin/claude")
+    monkeypatch.setattr(llm.subprocess, "run", fake_run)
+    return seen
+
+
+def test_claude_subscription_runs_claude_code(monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-should-not-pass")
+    seen = _fake_claude_code(monkeypatch, json.dumps({"type": "result", "is_error": False, "result": "발제 결과"}))
+    cfg = {"claude_auth": "subscription", "ai": {"effort": "high", "claude_code_model": "opus"}}
+    assert llm.call_claude("시스템 지시", "사용자 자료 원문", cfg) == "발제 결과"
+    cmd = seen["cmd"]
+    assert cmd[:2] == ["/usr/bin/claude", "-p"]
+    assert cmd[cmd.index("--tools") + 1] == ""                # 도구 없이 글만 쓴다
+    assert "--no-session-persistence" in cmd and "--bare" not in cmd   # bare는 구독 로그인을 안 쓴다
+    assert cmd[cmd.index("--effort") + 1] == "high" and cmd[cmd.index("--model") + 1] == "opus"
+    assert seen["input"] == "사용자 자료 원문" and seen["system"] == "시스템 지시"
+    assert "ANTHROPIC_API_KEY" not in seen["env"]             # 키가 있으면 구독 대신 키로 청구된다
+
+
+def test_claude_subscription_errors(monkeypatch):
+    _fake_claude_code(monkeypatch, json.dumps({"is_error": True, "result": "Not logged in · Please run /login"}), 1)
+    msg = llm.call_claude("s", "u", {"claude_auth": "subscription", "ai": {}})
+    assert "로그인이 필요합니다" in msg
+    monkeypatch.setattr(llm, "find_claude", lambda: None)
+    assert "설치돼 있지 않습니다" in llm.call_claude("s", "u", {"claude_auth": "subscription", "ai": {}})
+
+
+def test_available_provider_subscription(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.setattr(llm, "find_claude", lambda: "/usr/bin/claude")
+    assert llm.available_provider({"claude_auth": "subscription", "ai": {}}) == "claude"
+    assert llm.available_provider({"claude_auth": "api", "ai": {}}) is None
+    monkeypatch.setattr(llm, "find_claude", lambda: None)
+    assert llm.available_provider({"claude_auth": "subscription", "ai": {}}) is None
+
+
+def test_claude_code_status_parsing(monkeypatch):
+    monkeypatch.setattr(llm, "find_claude", lambda: "/usr/bin/claude")
+
+    def status(payload, code=0):
+        monkeypatch.setattr(llm.subprocess, "run", lambda *a, **k: types.SimpleNamespace(
+            stdout=json.dumps(payload).encode(), stderr=b"", returncode=code))
+        return llm.claude_code_status()
+
+    assert status({"loggedIn": True, "authMethod": "claude.ai"}) == (True, True, "로그인됨: 구독 계정(claude.ai)")
+    assert status({"loggedIn": False, "authMethod": "none"}, 1)[1] is False
+    assert "구독 요금제가 아님" in status({"loggedIn": True, "authMethod": "api_key"})[2]

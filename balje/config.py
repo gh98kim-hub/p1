@@ -183,6 +183,7 @@ DEFAULTS = {
         "model": "claude-opus-5-5",
         "effort": "high",
         "gemini_model": "gemini-pro-latest",
+        "claude_code_model": "",   # 구독 로그인 때 쓸 모델(비우면 Claude Code 기본값). 예: opus, sonnet
         "max_pitches": 5,
         "max_clusters": 15,
         "style_file": "style/house_style.md",
@@ -233,7 +234,8 @@ DEFAULTS = {
     "naver_client_secret": "",
     "anthropic_api_key": "",
     "gemini_api_key": "",
-    "courtlistener_token": "",     # CourtListener(미국 법원) API 토큰
+    # Claude 연결 방식: api(API 키·사용량 과금) / subscription(Claude Code 구독 로그인)
+    "claude_auth": "api",     # CourtListener(미국 법원) API 토큰
     "sec_email": "",               # SEC가 요구하는 접속자 연락처(이메일)
     "telegram_bot_token": "",
     "telegram_chat_id": "",

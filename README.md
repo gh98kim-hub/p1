@@ -142,6 +142,18 @@ python -m balje --materials 오늘자료 --ai
 
 ### 4) AI 발제안 (Claude · Gemini)
 
+**Claude를 구독(Pro·Max) 요금제로 쓰기**: [설정] → 'Claude 연결 방식'에서 **구독 로그인**을 고른다.
+이 프로그램은 기자 PC에 설치된 Anthropic 공식 프로그램 **Claude Code**(`claude -p`)에 글쓰기를 맡기고,
+사용량은 구독 한도에서 차감된다. 로그인은 Claude Code의 공식 절차로만 하며 이 프로그램은 로그인 정보를 저장하지 않는다.
+
+1. PowerShell에서 Claude Code 설치: `irm https://claude.ai/install.ps1 | iex`
+2. 프로그램을 다시 켜고 [설정] → [Claude 로그인] → 브라우저에서 구독 계정으로 로그인
+3. [상태 확인]에 '로그인됨: 구독 계정'이 나오면 준비 끝
+
+구독 한도는 개인의 일상적 사용을 기준으로 정해져 있다. OSINT 자동 실행을 짧은 간격으로 돌리면서 AI까지 켜 두면 한도에 금방 닿을 수 있다.
+
+**API 키로 쓰기**(사용한 만큼 과금):
+
 ```bash
 export ANTHROPIC_API_KEY=발급받은_키   # Claude
 export GEMINI_API_KEY=발급받은_키      # Gemini (Google AI Studio에서 발급)
