@@ -1,0 +1,60 @@
+name: 김하늘 전용 편집툴 exe 빌드
+
+on:
+  push:
+    branches: [claude/funny-allen-3dl12x]
+    paths:
+      - "haneul/**"
+      - "haneul_app.py"
+      - "Haneul.spec"
+      - "balje/llm.py"
+      - "tests/test_haneul.py"
+      - ".github/workflows/build-haneul-exe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 패키지 설치
+        run: pip install -r requirements.txt pyinstaller pytest
+
+      - name: 테스트
+        run: python -m pytest -q tests/test_haneul.py
+
+      - name: exe 만들기
+        run: pyinstaller --noconfirm Haneul.spec
+
+      - name: exe 자체 점검(화면·자료 저장·요청 차단·창)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force st | Out-Null
+          Copy-Item dist\Haneul.exe st\
+          $p = Start-Process -FilePath st\Haneul.exe -ArgumentList '--selftest', "$PWD\st\result.txt" -Wait -PassThru
+          Get-Content st\result.txt
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Haneul-windows
+          path: dist/Haneul.exe
+
+      - name: 다운로드 페이지(릴리스)에 올리기
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete haneul-latest --yes --cleanup-tag || true
+          gh release create haneul-latest dist/Haneul.exe \
+            --target "$GITHUB_SHA" \
+            --title "김하늘 전용 편집툴 (Windows)" \
+            --notes "Haneul.exe를 내려받아 원하는 폴더에 두고 더블클릭하세요. 브라우저에 편집툴이 열립니다. 설정(haneul_config.json)과 학습 자료(haneul_data.json)는 exe가 있는 폴더에 저장됩니다."

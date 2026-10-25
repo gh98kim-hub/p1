@@ -7,3 +7,5 @@ data/
 config.json
 .env
 /watchlist.json
+haneul_config.json
+haneul_data*.json

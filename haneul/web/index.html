@@ -1,0 +1,1162 @@
+<title>김하늘 전용 편집툴</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans+KR:wght@400;500;600&family=Noto+Serif+KR:wght@700;900&display=swap">
+<style>
+/* Layout: editing desk with two tabs — 제목 작업 (input column + candidate cards on a 칸 grid, 보관함 below) and 학습 자료 (past People-page articles, style guide, rules) */
+:root {
+  --paper: #F4F6F6;
+  --surface: #FFFFFF;
+  --ink: #15191D;
+  --muted: #59626B;
+  --line: #D6DCDF;
+  --cell-line: #E3E8EA;
+  --accent: #0D5D6E;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #E0EEF1;
+  --red: #BF3420;
+  --red-soft: #FBE6E1;
+  --mark: #F5E38F;
+  --mark-ink: #3B3000;
+  --ok: #2B7539;
+  --ok-soft: #E3F1E5;
+  --f-head: "Noto Serif KR", "Nanum Myeongjo", "AppleMyungjo", serif;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #111416; --surface: #191D20; --ink: #E7EAEC; --muted: #98A2AB;
+    --line: #2F363B; --cell-line: #262C31; --accent: #5DB2C3; --accent-ink: #0B1B1F;
+    --accent-soft: #15333A; --red: #F07B65; --red-soft: #3B1F1A; --mark: #6A5A14; --mark-ink: #FFF3C2;
+    --ok: #74C385; --ok-soft: #173020; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #111416; --surface: #191D20; --ink: #E7EAEC; --muted: #98A2AB;
+  --line: #2F363B; --cell-line: #262C31; --accent: #5DB2C3; --accent-ink: #0B1B1F;
+  --accent-soft: #15333A; --red: #F07B65; --red-soft: #3B1F1A; --mark: #6A5A14; --mark-ink: #FFF3C2;
+  --ok: #74C385; --ok-soft: #173020; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 24px; }
+h1, h2, h3 { font-family: var(--f-head); text-wrap: balance; margin: 0; }
+h1 { font-size: 28px; font-weight: 900; letter-spacing: -0.01em; }
+h2 { font-size: 19px; font-weight: 700; }
+h3 { font-size: 16px; font-weight: 700; }
+.top { display: grid; gap: 4px; }
+.top p { margin: 0; color: var(--muted); }
+.tabs { display: flex; gap: 2px; border-bottom: 2px solid var(--ink); flex-wrap: wrap; }
+.tabs button { background: transparent; border: none; border-radius: 4px 4px 0 0; padding: 9px 16px; font-weight: 600; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--paper); }
+.tabs .count { font-family: var(--f-num); font-weight: 500; font-size: 12.5px; margin-left: 4px; }
+.layout { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* input column */
+.panel { display: grid; gap: 18px; }
+.field { display: grid; gap: 6px; min-width: 0; }
+.lab { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+.lab .num { font-family: var(--f-num); font-weight: 500; letter-spacing: 0; }
+textarea, input[type="number"], input[type="text"], input[type="date"], input[type="search"], select {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; width: 100%;
+}
+textarea { resize: vertical; line-height: 1.55; }
+#article { min-height: 220px; }
+fieldset { border: 1px solid var(--line); border-radius: 4px; margin: 0; padding: 12px 14px 14px; display: grid; gap: 12px; background: var(--surface); min-width: 0; }
+legend { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted); padding: 0 4px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.inline { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.inline input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); }
+.spec { font-family: var(--f-num); font-size: 13px; color: var(--accent); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips label { cursor: pointer; }
+.chips input { position: absolute; opacity: 0; pointer-events: none; }
+.chips span { display: inline-block; padding: 5px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; background: var(--surface); }
+.chips input:checked + span { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.chips input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hint { font-size: 12.5px; color: var(--muted); margin: 0; }
+.go { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: inherit; cursor: pointer; border-radius: 4px; }
+.btn-main { background: var(--accent); color: var(--accent-ink); border: none; padding: 11px 18px; font-weight: 600; }
+.go .btn-main { flex: 1; }
+.btn-main:disabled, .btn-line:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-line { background: transparent; color: var(--ink); border: 1px solid var(--line); padding: 6px 11px; font-size: 13px; }
+.btn-line:hover:not(:disabled) { border-color: var(--ink); }
+.btn-line.danger { color: var(--red); }
+.btn-link { background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; font-size: inherit; }
+button:focus-visible, textarea:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status { font-size: 13.5px; margin: 0; min-height: 1.4em; }
+.status.err { color: var(--red); }
+.privacy { font-size: 12.5px; color: var(--muted); margin: 0; border-left: 2px solid var(--line); padding-left: 10px; }
+.learn { font-size: 13.5px; margin: 0; padding: 10px 12px; border-radius: 4px; background: var(--accent-soft); }
+.learn b { font-family: var(--f-num); font-weight: 500; }
+
+/* results */
+.results { display: grid; gap: 14px; min-width: 0; }
+.res-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -1px; margin-right: 4px; }
+.lg-dup { background: var(--mark); }
+.lg-ban { background: transparent; border-bottom: 2px solid var(--red); border-radius: 0 !important; }
+.lg-over { background: var(--red-soft); outline: 1px solid var(--red); }
+.banner { margin: 0; font-size: 13.5px; background: var(--accent-soft); padding: 10px 12px; border-radius: 4px; }
+.used { margin: 0; font-size: 13px; color: var(--muted); }
+.cards { display: grid; gap: 14px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px 16px; display: grid; gap: 12px; min-width: 0; container-type: inline-size; }
+.card.manual { border-style: dashed; }
+.card-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.tag { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 3px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.tag.ex { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+.point { font-size: 13.5px; color: var(--muted); min-width: 0; }
+
+/* cell grid: one cell = one 자 */
+.grid { display: grid; gap: 6px; }
+.line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.track { overflow-x: auto; max-width: 100%; padding-bottom: 2px; }
+.row {
+  --cell: 26px; --cell: min(32px, calc((100cqw - 120px) / var(--n)));
+  display: flex; position: relative; height: var(--cell); width: max-content; min-width: calc(var(--n) * var(--cell));
+}
+.row::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--n) * var(--cell));
+  border: 1px solid var(--line);
+  background-image: repeating-linear-gradient(to right, transparent 0 calc(var(--cell) - 1px), var(--cell-line) calc(var(--cell) - 1px) var(--cell));
+}
+.row.sub { --cell: 20px; --cell: min(22px, calc((100cqw - 120px) / var(--n))); }
+.ch {
+  position: relative; flex: none; width: calc(var(--cell) * var(--w)); text-align: center; line-height: var(--cell);
+  font-family: var(--f-head); font-weight: 900; font-size: calc(var(--cell) * 0.74); white-space: pre;
+}
+.row.sub .ch { font-weight: 700; }
+.ch.dup { background: var(--mark); color: var(--mark-ink); }
+.ch.ban { box-shadow: inset 0 -2px 0 var(--red); }
+.ch.over { background: var(--red-soft); color: var(--red); outline: 1px dashed var(--red); outline-offset: -1px; }
+.meter { font-family: var(--f-num); font-size: 12.5px; display: flex; gap: 6px; align-items: center; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pill { font-family: var(--f-body); font-size: 12px; font-weight: 600; padding: 0 7px; border-radius: 999px; }
+.pill.full { background: var(--ok-soft); color: var(--ok); }
+.pill.spare { background: var(--accent-soft); color: var(--accent); }
+.pill.over { background: var(--red-soft); color: var(--red); }
+.line.extra .row::before { border-color: var(--red); }
+.flags { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.flag { padding: 1px 8px; border-radius: 3px; }
+.flag.dup { background: var(--mark); color: var(--mark-ink); }
+.flag.ban, .flag.rows { background: var(--red-soft); color: var(--red); }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.editor { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 12px; }
+.editor textarea { font-family: var(--f-head); font-weight: 700; font-size: 16px; }
+
+/* saved */
+.saved { display: grid; gap: 14px; border-top: 2px solid var(--ink); padding-top: 18px; }
+.saved-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 14px; }
+.empty { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* library */
+.lib-top { display: flex; gap: 24px; align-items: end; flex-wrap: wrap; justify-content: space-between; }
+.big { display: flex; align-items: baseline; gap: 8px; }
+.big b { font-family: var(--f-head); font-size: 40px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+.big span { color: var(--muted); }
+.typebar { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.typebar span { border: 1px solid var(--line); border-radius: 3px; padding: 1px 8px; background: var(--surface); }
+.typebar b { font-family: var(--f-num); font-weight: 500; margin-left: 4px; }
+.access { margin: 0; font-size: 13.5px; padding: 10px 12px; border-radius: 4px; background: var(--red-soft); color: var(--red); }
+.lib-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 960px) { .lib-grid { grid-template-columns: minmax(0, 1fr); } }
+.lib-col { display: grid; gap: 20px; min-width: 0; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 12px; min-width: 0; }
+.box-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.seg button { border: none; border-radius: 0; background: transparent; padding: 6px 14px; font-size: 13.5px; color: var(--muted); }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+details.fmt { border: 1px dashed var(--line); border-radius: 4px; }
+details.fmt summary { cursor: pointer; padding: 8px 12px; font-size: 13px; font-weight: 600; }
+details.fmt .inner { padding: 0 12px 12px; display: grid; gap: 8px; }
+pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6; background: var(--paper); border-radius: 4px; padding: 10px 12px; overflow-x: auto; white-space: pre; }
+.preview-box { border: 1px solid var(--accent); border-radius: 4px; padding: 12px; display: grid; gap: 10px; background: var(--accent-soft); }
+.preview-box ol { margin: 0; padding-left: 20px; font-size: 13.5px; display: grid; gap: 2px; }
+.preview-box .sum { font-size: 14px; font-weight: 600; margin: 0; }
+.progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); width: 0; }
+.filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 8px; }
+.exlist { list-style: none; margin: 0; padding: 0; display: grid; }
+.ex { border-top: 1px solid var(--line); padding: 10px 0; display: grid; gap: 4px; }
+.ex:first-child { border-top: none; }
+.ex-meta { font-size: 12px; color: var(--muted); font-family: var(--f-num); }
+.ex-title { font-family: var(--f-head); font-weight: 700; font-size: 15.5px; }
+.ex-sub { font-size: 13.5px; color: var(--muted); }
+.ex-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; }
+.ex-body { margin: 4px 0 0; font-size: 13.5px; white-space: pre-wrap; background: var(--paper); border-radius: 4px; padding: 10px 12px; max-height: 280px; overflow-y: auto; }
+.badge { font-size: 11.5px; border: 1px solid var(--line); border-radius: 3px; padding: 0 6px; color: var(--muted); }
+#guide { min-height: 260px; font-size: 14px; }
+@media (prefers-reduced-motion: no-preference) { .progress i { transition: width .2s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>김하늘 전용 편집툴</h1>
+    <p>피플면 제목 작업용. 과거 피플면 기사로 이 신문의 제목 말투를 익히고, 지면 칸에 맞춰 후보를 뽑습니다.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="화면">
+    <button id="tb-work" role="tab" type="button" aria-controls="tab-work">제목 작업</button>
+    <button id="tb-library" role="tab" type="button" aria-controls="tab-library">학습 자료<span class="count" id="tabCount"></span></button>
+  </nav>
+
+  <!-- ===== 제목 작업 ===== -->
+  <div id="tab-work" role="tabpanel" aria-labelledby="tb-work" class="wrap">
+    <div class="layout">
+      <section class="panel" aria-label="입력">
+        <div class="field">
+          <label class="lab" for="article"><span>기사 본문</span><span class="num" id="artCount"></span></label>
+          <textarea id="article" spellcheck="false"></textarea>
+        </div>
+        <div class="field">
+          <label class="lab" for="artType">기사 유형</label>
+          <select id="artType"></select>
+        </div>
+
+        <fieldset>
+          <legend>지면 칸</legend>
+          <div class="row2">
+            <div class="field">
+              <label class="lab" for="rows">제목 행 수</label>
+              <select id="rows"><option value="1">1행</option><option value="2">2행</option><option value="3">3행</option></select>
+            </div>
+            <div class="field">
+              <label class="lab" for="per">행당 글자 수</label>
+              <input id="per" type="number" min="6" max="40" step="1">
+            </div>
+          </div>
+          <div class="row2">
+            <label class="inline"><input id="useSub" type="checkbox"> 부제 쓰기</label>
+            <div class="field">
+              <label class="lab" for="subPer">부제 글자 수</label>
+              <input id="subPer" type="number" min="6" max="60" step="1">
+            </div>
+          </div>
+          <div class="row2">
+            <div class="field">
+              <label class="lab" for="space">띄어쓰기</label>
+              <select id="space"><option value="1">1자로 셈</option><option value="0.5">0.5자로 셈</option><option value="0">세지 않음</option></select>
+            </div>
+            <label class="inline"><input id="half" type="checkbox"> 숫자·영문·부호 0.5자</label>
+          </div>
+          <div class="spec" id="spec"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>톤</legend>
+          <div class="chips" role="radiogroup" aria-label="톤">
+            <label><input type="radio" name="tone" value="mix"><span>골고루</span></label>
+            <label><input type="radio" name="tone" value="담백"><span>담백</span></label>
+            <label><input type="radio" name="tone" value="감성"><span>감성</span></label>
+            <label><input type="radio" name="tone" value="따옴표형"><span>따옴표형</span></label>
+          </div>
+        </fieldset>
+
+        <p class="learn" id="learnState"></p>
+
+        <div class="go">
+          <button class="btn-main" id="gen" type="button">제목 후보 뽑기</button>
+          <button class="btn-line" id="stop" type="button" hidden>멈추기</button>
+        </div>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+        <p class="privacy">기사 원문이 Claude로 보내집니다. 엠바고 기사나 미공개 인물 정보는 사내 지침을 먼저 확인하세요. 후보는 출발점일 뿐이고, 사실관계와 뉘앙스는 편집기자가 최종 판단합니다.</p>
+      </section>
+
+      <section class="results" aria-label="후보">
+        <div class="res-head">
+          <h2>제목 후보 <span class="spec" id="candCount"></span></h2>
+          <div class="legend"><span><i class="lg-dup"></i>겹친 말</span><span><i class="lg-ban"></i>금지어</span><span><i class="lg-over"></i>칸 초과</span></div>
+        </div>
+        <p class="banner" id="exampleNote">아래는 예시 기사로 뽑은 예시 후보입니다. 왼쪽에 실제 기사를 붙여 넣고 ‘제목 후보 뽑기’를 누르세요.</p>
+        <p class="used" id="usedNote" hidden></p>
+        <div id="manual"></div>
+        <div class="cards" id="cands"></div>
+      </section>
+    </div>
+
+    <section class="saved" aria-label="보관함">
+      <div class="res-head">
+        <h2>보관함 · 비교</h2>
+        <button class="btn-line" id="clearSaved" type="button" hidden>모두 비우기</button>
+      </div>
+      <div class="saved-grid" id="saved"></div>
+    </section>
+  </div>
+
+  <!-- ===== 학습 자료 ===== -->
+  <div id="tab-library" role="tabpanel" aria-labelledby="tb-library" class="wrap" hidden>
+    <div class="lib-top">
+      <div class="big"><b id="libTotal">0</b><span>건 학습 중</span><span id="libBody"></span></div>
+      <div class="typebar" id="typeBar"></div>
+    </div>
+    <p class="access" id="libAccess" hidden></p>
+
+    <div class="lib-grid">
+      <div class="lib-col">
+        <section class="box" aria-label="자료 넣기">
+          <div class="box-head">
+            <h2>자료 넣기</h2>
+            <div class="seg" role="tablist" aria-label="넣는 방법">
+              <button type="button" role="tab" data-mode="paste">붙여넣기</button>
+              <button type="button" role="tab" data-mode="file">파일</button>
+              <button type="button" role="tab" data-mode="form">한 건씩</button>
+            </div>
+          </div>
+
+          <div id="mode-paste" class="field">
+            <label class="lab" for="bulk"><span>여러 건 한꺼번에</span><span class="num" id="bulkCount"></span></label>
+            <textarea id="bulk" rows="10" spellcheck="false" placeholder="제목: 34년 구둣방 닫는 / 박정순씨의 마지막 망치&#10;부제: 손목 탓 이달 말 구둣방 정리&#10;유형: 은퇴&#10;날짜: 2025-03-02&#10;본문:&#10;서울 ○○시장 골목 끝에서 …&#10;===&#10;제목: …"></textarea>
+            <details class="fmt">
+              <summary>넣는 형식 보기</summary>
+              <div class="inner">
+                <p class="hint">기사 사이는 <b>===</b> 한 줄로 나눕니다. 제목의 행 구분은 <b>/</b>. 본문은 맨 마지막에 씁니다. 부제·유형·날짜·본문은 없어도 됩니다.</p>
+<pre>제목: 34년 구둣방 닫는 / 박정순씨의 마지막 망치
+부제: 손목 탓 이달 말 구둣방 정리
+유형: 은퇴
+날짜: 2025-03-02
+본문:
+서울 ○○시장 골목 끝에서 34년 동안 …
+===
+제목: “닳은 굽만 봐도 / 사는 게 보여요”
+본문:
+…</pre>
+                <p class="hint">엑셀에서 표째로 복사해 붙여도 됩니다. 첫 줄 머리글을 <b>제목, 부제, 유형, 날짜, 본문</b>으로 맞춰 주세요.</p>
+              </div>
+            </details>
+            <div class="go"><button class="btn-line" id="parseBulk" type="button">인식하기</button></div>
+          </div>
+
+          <div id="mode-file" class="field" hidden>
+            <label class="lab" for="file">파일 올리기 (여러 개 가능)</label>
+            <input id="file" type="file" multiple accept=".txt,.csv,.tsv,.json,.md,text/plain,text/csv,application/json">
+            <p class="hint">TXT는 붙여넣기와 같은 형식, CSV는 첫 줄 머리글이 <b>제목,부제,유형,날짜,본문</b>. 엑셀 파일은 ‘CSV로 저장’해서 올리세요. 한글 CSV(EUC-KR)도 읽습니다.</p>
+          </div>
+
+          <div id="mode-form" class="field" hidden>
+            <div class="field"><label class="lab" for="fTitle">제목 (행마다 줄바꿈)</label><textarea id="fTitle" rows="2"></textarea></div>
+            <div class="field"><label class="lab" for="fSub">부제</label><input id="fSub" type="text"></div>
+            <div class="row2">
+              <div class="field"><label class="lab" for="fType">유형</label><select id="fType"></select></div>
+              <div class="field"><label class="lab" for="fDate">게재일</label><input id="fDate" type="date"></div>
+            </div>
+            <div class="field"><label class="lab" for="fBody">본문</label><textarea id="fBody" rows="6"></textarea></div>
+            <div class="go"><button class="btn-line" id="saveOne" type="button">이 기사 넣기</button></div>
+          </div>
+
+          <div id="parsePreview"></div>
+          <p class="status" id="importStatus" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="box" aria-label="스타일 가이드">
+          <div class="box-head">
+            <h2>스타일 가이드</h2>
+            <span class="hint" id="guideAt"></span>
+          </div>
+          <p class="hint">쌓인 제목을 Claude가 읽고 이 신문 피플면 제목의 규칙을 정리합니다. 후보를 뽑을 때마다 이 가이드를 따릅니다. 직접 고쳐도 되고, 고친 내용은 바로 저장됩니다.</p>
+          <textarea id="guide" spellcheck="false" placeholder="자료를 넣은 뒤 ‘제목 스타일 분석’을 누르세요."></textarea>
+          <div class="go">
+            <button class="btn-line" id="analyze" type="button">제목 스타일 분석</button>
+            <button class="btn-line" id="stopAnalyze" type="button" hidden>멈추기</button>
+          </div>
+          <p class="status" id="guideStatus" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="box" aria-label="편집 규칙">
+          <h2>편집 규칙 · 금지어</h2>
+          <div class="field">
+            <label class="lab" for="rules">편집 규칙</label>
+            <textarea id="rules" rows="4" placeholder="예: 직함은 이름 뒤에 쓴다 / 따옴표 제목은 큰따옴표만 쓴다 / 나이는 제목에 넣지 않는다"></textarea>
+          </div>
+          <div class="field">
+            <label class="lab" for="banned">금지어 (쉼표로 구분)</label>
+            <input id="banned" type="text" placeholder="예: 감동, 화제, 눈길">
+          </div>
+          <p class="hint">칸 설정·스타일 가이드·편집 규칙은 이 툴을 여는 사람 모두에게 같이 적용됩니다.</p>
+        </section>
+      </div>
+
+      <section class="box" aria-label="자료 목록">
+        <div class="box-head">
+          <h2>자료 목록</h2>
+          <span class="hint" id="listCount"></span>
+        </div>
+        <div class="filters">
+          <input id="q" type="search" placeholder="제목·본문 검색" aria-label="검색">
+          <select id="qType" aria-label="유형"></select>
+        </div>
+        <ul class="exlist" id="exList"></ul>
+        <div class="go" id="moreBox"></div>
+        <div class="go" id="wipeBox"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const TYPES = ["부고", "수상", "은퇴", "취임·인사", "인터뷰", "선행·기부", "기타"];
+const EXAMPLE_ARTICLE = `[예시 기사 · 실제 인물이 아닙니다]
+서울 ○○시장 골목 끝에서 34년 동안 구두를 고쳐온 박정순(71)씨가 이달 말 가게 문을 닫는다.
+
+1990년 두 평 남짓한 가게를 연 박씨는 하루 평균 30켤레의 구두를 손봤다. 단골손님의 발 모양과 걸음걸이를 기억했다가 굽을 갈 때 닳는 방향까지 맞춰 고쳐주는 것으로 이름이 났다.
+
+"닳은 굽만 봐도 그 사람이 어떻게 사는지 보여요. 그걸 고쳐주는 게 내 일이었죠."
+
+박씨가 가게를 접기로 한 건 손목 관절이 나빠지면서다. 지난해부터 망치를 오래 쥐기 어려워졌다고 했다.
+
+가게에 남은 공구 일부는 인근 직업학교 구두 제작반에 기증하기로 했다. 박씨는 "기술은 가져갈 수 없지만 연장은 누군가 계속 쓰면 좋겠다"고 말했다.
+
+단골들은 이달 초부터 가게 앞에 감사 쪽지를 붙이고 있다.`;
+
+const EXAMPLE_CANDS = [
+  { lines: ["34년 구둣방 닫는", "박정순씨의 마지막 망치"], sub: "손목 탓 이달 말 구둣방 정리", tone: "담백", point: "숫자(34년)와 ‘마지막’으로 은퇴 소식을 앞세움" },
+  { lines: ["“닳은 굽만 봐도", "사는 게 보여요”"], sub: "구두 수선 34년 박정순씨 은퇴", tone: "따옴표형", point: "본인 발언으로 직업관을 먼저 보여줌" },
+  { lines: ["손님 걸음까지 기억한", "골목 구두 수선공"], sub: "박정순씨 34년 만에 가게 문 닫아", tone: "감성", point: "단골의 걸음을 기억한 일화에 초점" },
+  { lines: ["시장 골목 34년 지킨 구두 수선공", "박정순씨 이달 말 은퇴"], sub: "공구는 직업학교 구두 제작반에 기증", tone: "담백", point: "1행이 칸을 넘친 경우: 빨간 칸만큼 줄여야 함" },
+  { lines: ["“기술은 못 가져가도", "연장은 계속 쓰이길”"], sub: "구둣방 접는 박정순씨, 공구 기증", tone: "따옴표형", point: "공구 기증 사연을 마무리 발언으로" },
+];
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const KEY = "people-title-desk-v1";
+const saved0 = store.get(KEY, {}) || {};
+let seq = 0;
+const uid = () => "c" + Date.now().toString(36) + (seq++);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+const CFG_DEFAULT = { rows: 2, per: 14, sub: true, subPer: 20, space: 1, half: false, rules: "", banned: "", guide: "", guideAt: 0 };
+const S = {
+  cfg: Object.assign({}, CFG_DEFAULT, saved0.set || {}, saved0.cfg || {}),
+  tone: saved0.tone || "mix",
+  saved: Array.isArray(saved0.saved) ? saved0.saved : [],
+  cands: EXAMPLE_CANDS.map(c => ({ ...c, id: uid(), example: true })),
+  showingExample: true,
+  manual: { id: "manual", lines: ["", ""], sub: "", tone: "직접 쓰기", point: "" },
+  artType: "auto",
+  lib: [], libState: "loading",
+  pending: null, mode: "paste", q: "", qType: "", show: 50, openEx: new Set(), confirmDel: null, wipeAsk: false, busyImport: false,
+};
+const persistLocal = () => store.set(KEY, { cfg: S.cfg, tone: S.tone, saved: S.saved });
+
+const $ = s => document.querySelector(s);
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+function opt(sel, items, first) { sel.replaceChildren(...(first ? [first] : []).concat(items).map(([v, t]) => { const o = el("option", null, t); o.value = v; return o; })); }
+
+/* ---- counting ---- */
+const HALF = /[\x21-\x7E‘’“”·…]/;
+function cw(ch) { if (/\s/.test(ch)) return S.cfg.space; if (S.cfg.half && HALF.test(ch)) return 0.5; return 1; }
+function width(str) { let w = 0; for (const ch of str) w += cw(ch); return w; }
+const fmt = n => Number.isInteger(n) ? String(n) : n.toFixed(1);
+
+/* ---- words ---- */
+const WORD = /[가-힣A-Za-z0-9]+/g;
+const J2 = ["에서", "으로", "에게", "까지", "부터", "처럼", "보다", "하고", "이라"];
+const J1 = "은는이가을를의에도와과로만";
+function stem(w) {
+  if (w.length >= 4 && J2.some(j => w.endsWith(j))) return w.slice(0, -2);
+  if (w.length >= 3 && J1.includes(w.at(-1))) return w.slice(0, -1);
+  return w;
+}
+function dupStems(c) {
+  const cnt = new Map();
+  const all = [...c.lines, S.cfg.sub ? c.sub : ""].join(" ");
+  for (const m of all.matchAll(WORD)) { const s = stem(m[0]); if (s.length >= 2) cnt.set(s, (cnt.get(s) || 0) + 1); }
+  return new Set([...cnt].filter(([, n]) => n > 1).map(([s]) => s));
+}
+const bannedTerms = () => (S.cfg.banned || "").split(/[,\n]/).map(t => t.trim()).filter(Boolean);
+function charFlags(str, dups, bans) {
+  const f = new Array(str.length).fill("");
+  for (const m of str.matchAll(WORD)) { const s = stem(m[0]); if (dups.has(s)) for (let i = 0; i < s.length; i++) f[m.index + i] = "dup"; }
+  for (const b of bans) { let i = str.indexOf(b); while (i >= 0) { for (let k = 0; k < b.length; k++) f[i + k] = "ban"; i = str.indexOf(b, i + b.length); } }
+  return f;
+}
+
+/* ---- cell grid ---- */
+function rowEl(str, n, dups, bans, isSub) {
+  const track = el("div", "track");
+  const row = el("div", "row" + (isSub ? " sub" : ""));
+  row.style.setProperty("--n", n);
+  const f = charFlags(str, dups, bans);
+  let acc = 0;
+  [...str].forEach((ch, i) => {
+    const w = cw(ch); acc += w;
+    const s = el("span", "ch" + (f[i] ? " " + f[i] : "") + (acc > n + 1e-9 ? " over" : ""));
+    s.style.setProperty("--w", w);
+    s.textContent = ch;
+    row.append(s);
+  });
+  track.append(row);
+  return track;
+}
+function meterEl(str, n) {
+  const w = width(str), diff = n - w;
+  const m = el("div", "meter", `${fmt(w)} / ${n}자`);
+  let pill;
+  if (diff < 0) pill = el("span", "pill over", `${fmt(-diff)}자 초과`);
+  else if (diff <= 1) pill = el("span", "pill full", "꽉 참");
+  else pill = el("span", "pill spare", `${fmt(diff)}자 여유`);
+  m.append(pill);
+  return m;
+}
+function previewEl(c) {
+  const box = el("div", "grid");
+  const dups = dupStems(c), bans = bannedTerms();
+  const R = S.cfg.rows, n = S.cfg.per;
+  const lines = c.lines.length ? c.lines : [""];
+  lines.forEach((ln, i) => {
+    const t = ln.trim();
+    if (!t && i >= R) return;
+    const line = el("div", "line" + (i >= R ? " extra" : ""));
+    line.append(rowEl(t, n, dups, bans, false), meterEl(t, n));
+    box.append(line);
+  });
+  if (S.cfg.sub) {
+    const t = (c.sub || "").trim();
+    const line = el("div", "line");
+    line.append(rowEl(t, S.cfg.subPer, dups, bans, true), meterEl(t, S.cfg.subPer));
+    box.append(line);
+  }
+  const flags = el("div", "flags");
+  const used = lines.filter(l => l.trim()).length;
+  if (used > R) flags.append(el("span", "flag rows", `행 수 초과 · ${used}행 / ${R}행`));
+  for (const d of dups) flags.append(el("span", "flag dup", `겹친 말 · ${d}`));
+  const text = [...lines, S.cfg.sub ? c.sub : ""].join(" ");
+  for (const b of bans) if (text.includes(b)) flags.append(el("span", "flag ban", `금지어 · ${b}`));
+  if (flags.childElementCount) box.append(flags);
+  return box;
+}
+
+/* ---- cards ---- */
+const plain = c => c.lines.map(l => l.trim()).filter(Boolean).join("\n") + (S.cfg.sub && (c.sub || "").trim() ? "\n" + c.sub.trim() : "");
+function flash(btn, msg) { const o = btn.textContent; btn.textContent = msg; btn.disabled = true; setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 1200); }
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); flash(btn, "복사됨"); }
+  catch {
+    const t = document.createElement("textarea"); t.value = text; document.body.append(t); t.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {}
+    t.remove(); flash(btn, ok ? "복사됨" : "복사 안 됨");
+  }
+}
+function btn(label, fn, cls) { const b = el("button", cls || "btn-line", label); b.type = "button"; b.onclick = () => fn(b); return b; }
+
+function editorEl(c, refresh) {
+  const box = el("div", "editor");
+  const lab = el("label", "lab"); lab.htmlFor = "ed-" + c.id; lab.append(el("span", null, "제목 고치기 (행마다 줄바꿈)"));
+  const ta = el("textarea"); ta.id = "ed-" + c.id; ta.rows = Math.max(S.cfg.rows, 2); ta.value = c.lines.join("\n");
+  ta.oninput = () => { c.lines = ta.value.split("\n"); refresh(); };
+  box.append(lab, ta);
+  if (S.cfg.sub) {
+    const sl = el("label", "lab"); sl.htmlFor = "eds-" + c.id; sl.append(el("span", null, "부제"));
+    const si = el("input"); si.type = "text"; si.id = "eds-" + c.id; si.value = c.sub || "";
+    si.oninput = () => { c.sub = si.value; refresh(); };
+    box.append(sl, si);
+  }
+  return box;
+}
+function cardEl(c, kind) {
+  const card = el("article", "card" + (kind === "manual" ? " manual" : ""));
+  const head = el("div", "card-head");
+  head.append(el("span", "tag", c.tone || "후보"));
+  if (c.example) head.append(el("span", "tag ex", "예시"));
+  if (c.origin) head.append(el("span", "tag ex", c.origin));
+  if (c.point) head.append(el("span", "point", c.point));
+  card.append(head);
+  const pv = el("div"); pv.append(previewEl(c)); card.append(pv);
+  const refresh = () => pv.replaceChildren(previewEl(c));
+  const acts = el("div", "actions");
+  if (kind === "cand") {
+    acts.append(
+      btn(c.editing ? "고치기 닫기" : "고치기", () => { c.editing = !c.editing; renderCands(); }),
+      btn("보관", b => saveCand(c, b)),
+      btn("복사", b => copy(plain(c), b)),
+    );
+    if (sampleFn) { const v = btn("이 방향으로 3개 더", b => vary(c, b)); v.dataset.vary = "1"; v.disabled = !!ctl; acts.append(v); }
+  } else if (kind === "manual") {
+    acts.append(
+      btn("보관", b => saveCand(c, b)),
+      btn("복사", b => copy(plain(c), b)),
+      btn("지우기", () => { c.lines = Array(S.cfg.rows).fill(""); c.sub = ""; renderManual(); }),
+    );
+  } else {
+    acts.append(
+      btn("복사", b => copy(plain(c), b)),
+      btn("빼기", () => { S.saved = S.saved.filter(x => x.id !== c.id); persistLocal(); renderSaved(); }),
+    );
+  }
+  card.append(acts);
+  if (kind === "manual" || (kind === "cand" && c.editing)) card.append(editorEl(c, refresh));
+  return card;
+}
+function saveCand(c, b) {
+  if (!c.lines.some(l => l.trim())) { flash(b, "빈 제목"); return; }
+  S.saved.unshift({ id: uid(), lines: c.lines.map(l => l.trim()).filter(Boolean), sub: (c.sub || "").trim(), tone: c.tone, point: c.point || "" });
+  persistLocal(); renderSaved(); flash(b, "담음");
+}
+function renderCands() {
+  $("#cands").replaceChildren(...S.cands.map(c => cardEl(c, "cand")));
+  $("#candCount").textContent = S.cands.length ? `${S.cands.length}개` : "";
+  $("#exampleNote").hidden = !S.showingExample;
+}
+function renderManual() { $("#manual").replaceChildren(cardEl(S.manual, "manual")); }
+function renderSaved() {
+  const box = $("#saved");
+  if (!S.saved.length) box.replaceChildren(el("p", "empty", "마음에 드는 후보에서 ‘보관’을 누르면 여기에 나란히 놓고 비교할 수 있습니다."));
+  else box.replaceChildren(...S.saved.map(c => cardEl(c, "saved")));
+  $("#clearSaved").hidden = !S.saved.length;
+}
+function renderSpec() {
+  const s = S.cfg;
+  $("#spec").textContent = `${s.rows}행 × ${s.per}자` + (s.sub ? ` · 부제 ${s.subPer}자` : " · 부제 없음");
+}
+function renderWork() { renderManual(); renderCands(); renderSaved(); renderSpec(); renderLearnState(); }
+
+/* ---- shared config (db: config/main) ---- */
+let db = null, canWrite = true, cfgTimer = null, cfgChain = Promise.resolve();
+function saveCfg() {
+  persistLocal();
+  if (!db || !canWrite) return;
+  clearTimeout(cfgTimer);
+  cfgTimer = setTimeout(() => {
+    const body = { ...S.cfg };
+    cfgChain = cfgChain.then(() => db.doc("config/main").set(body)).catch(e => {
+      if (e && e.code === "invalid_argument") { canWrite = false; renderLibrary(); }
+    });
+  }, 700);
+}
+function fillCfgControls(force) {
+  const s = S.cfg, act = document.activeElement;
+  const put = (id, fn) => { const e = $(id); if (force || e !== act) fn(e); };
+  put("#rows", e => e.value = String(s.rows)); put("#per", e => e.value = s.per);
+  put("#useSub", e => e.checked = s.sub); put("#subPer", e => { e.value = s.subPer; e.disabled = !s.sub; });
+  put("#space", e => e.value = String(s.space)); put("#half", e => e.checked = s.half);
+  put("#rules", e => e.value = s.rules || ""); put("#banned", e => e.value = s.banned || "");
+  if (!analyzing) put("#guide", e => e.value = s.guide || "");
+  $("#guideAt").textContent = s.guideAt ? "마지막 분석 " + new Date(s.guideAt).toLocaleDateString("ko-KR") : "";
+}
+function applyRemoteCfg(d) {
+  const next = Object.assign({}, CFG_DEFAULT, d);
+  const changed = JSON.stringify(next) !== JSON.stringify(S.cfg);
+  if (!changed) return;
+  S.cfg = next; persistLocal(); fillCfgControls(false); renderWork();
+}
+
+/* ---- library (db: examples) ---- */
+const normTitle = t => String(t || "").replace(/\s+/g, "");
+const keyOf = it => normTitle(it.title) + "|" + String(it.date || "").trim();
+const titleLine = it => String(it.title || "").split("\n").map(s => s.trim()).filter(Boolean).join(" / ");
+const KEYMAP = { "제목": "title", "헤드라인": "title", "title": "title", "부제": "sub", "부제목": "sub", "sub": "sub", "subtitle": "sub",
+  "유형": "type", "분류": "type", "type": "type", "날짜": "date", "게재일": "date", "date": "date", "본문": "body", "기사": "body", "body": "body", "article": "body" };
+const keyField = k => KEYMAP[String(k).replace(/^﻿/, "").trim().toLowerCase()];
+function normItem(o) {
+  const it = { title: "", sub: "", type: "", date: "", body: "" };
+  for (const [k, v] of Object.entries(o || {})) { const f = keyField(k); if (f && v != null) it[f] = String(v).trim(); }
+  it.title = it.title.split(/\s*(?:\/|\||\n)\s*/).filter(Boolean).join("\n");
+  it.body = it.body.slice(0, 20000);
+  return it;
+}
+function parseBlocks(txt) {
+  const blocks = txt.replace(/\r\n?/g, "\n").split(/^\s*={3,}\s*$/m).map(b => b.trim()).filter(Boolean);
+  return blocks.map(b => {
+    const lines = b.split("\n"), o = {};
+    let keyed = false;
+    for (let i = 0; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*([^:：]{1,6})\s*[:：]\s*(.*)$/);
+      const f = m && keyField(m[1]);
+      if (f) {
+        keyed = true;
+        if (f === "body") { o.body = [m[2], ...lines.slice(i + 1)].join("\n"); break; }
+        o[f] = m[2];
+      } else if (!lines[i].trim()) continue;
+      else if (keyed) { o.body = lines.slice(i).join("\n"); break; }
+      else { o.title = lines[i]; o.body = lines.slice(i + 1).join("\n"); break; }
+    }
+    return normItem(o);
+  });
+}
+function parseDelimited(txt, d) {
+  const rows = []; let row = [], f = "", q = false;
+  for (let i = 0; i < txt.length; i++) {
+    const c = txt[i];
+    if (q) { if (c === '"') { if (txt[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"' && f === "") q = true;
+    else if (c === d) { row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && txt[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+    else f += c;
+  }
+  if (f || row.length) { row.push(f); rows.push(row); }
+  const head = rows.shift() || [];
+  return rows.filter(r => r.some(x => x.trim())).map(r => { const o = {}; head.forEach((h, i) => { o[h] = r[i] ?? ""; }); return normItem(o); });
+}
+function parseAny(txt, name) {
+  txt = txt.replace(/^﻿/, "");
+  const lower = (name || "").toLowerCase();
+  if (lower.endsWith(".json") || /^\s*[\[{]/.test(txt)) {
+    try { const j = JSON.parse(txt); let arr = Array.isArray(j) ? j : (j.examples || j.items || j.articles || (j.collections && j.collections.examples) || []);
+      if (!Array.isArray(arr)) arr = Object.values(arr);
+      return arr.map(normItem); } catch {}
+  }
+  const first = txt.split(/\r?\n/, 1)[0] || "";
+  if (first.includes("\t") && first.split("\t").some(keyField)) return parseDelimited(txt, "\t");
+  if ((lower.endsWith(".csv") || first.includes(",")) && first.split(",").some(h => keyField(h) === "title")) return parseDelimited(txt, ",");
+  if (lower.endsWith(".tsv")) return parseDelimited(txt, "\t");
+  return parseBlocks(txt);
+}
+async function readFile(file) {
+  const buf = await file.arrayBuffer();
+  let t = new TextDecoder("utf-8").decode(buf);
+  if ((t.match(/\uFFFD/g) || []).length > 3) { try { t = new TextDecoder("euc-kr").decode(buf); } catch {} }
+  return t;
+}
+function stage(items, from) {
+  const have = new Set(S.lib.map(keyOf)), seen = new Set();
+  const ok = [], dup = [], bad = [];
+  for (const it of items) {
+    if (!it.title) { bad.push(it); continue; }
+    const k = keyOf(it);
+    if (have.has(k) || seen.has(k)) { dup.push(it); continue; }
+    seen.add(k); ok.push(it);
+  }
+  S.pending = { ok, dup: dup.length, bad: bad.length, from };
+  renderPreview();
+}
+function renderPreview() {
+  const box = $("#parsePreview"), p = S.pending;
+  if (!p) { box.replaceChildren(); return; }
+  const wrap = el("div", "preview-box");
+  const bits = [`${p.ok.length}건 넣을 수 있음`];
+  if (p.dup) bits.push(`이미 있는 ${p.dup}건 건너뜀`);
+  if (p.bad) bits.push(`제목 없는 ${p.bad}건 제외`);
+  wrap.append(el("p", "sum", bits.join(" · ")));
+  if (p.ok.length) {
+    const ol = el("ol");
+    p.ok.slice(0, 5).forEach(it => ol.append(el("li", null, titleLine(it) + (it.type ? `  [${it.type}]` : "") + (it.body ? "" : "  (본문 없음)"))));
+    if (p.ok.length > 5) ol.append(el("li", "hint", `외 ${p.ok.length - 5}건`));
+    wrap.append(ol);
+  }
+  const bar = el("div", "progress"); bar.hidden = true; bar.append(el("i")); wrap.append(bar);
+  const go = el("div", "go");
+  const save = btn(`${p.ok.length}건 저장`, () => importItems(p.ok, bar), "btn-main");
+  save.disabled = !p.ok.length || !db || !canWrite || S.busyImport;
+  go.append(save, btn("취소", () => { S.pending = null; renderPreview(); }));
+  wrap.append(go);
+  box.replaceChildren(wrap);
+}
+async function writeDoc(ref, body) {
+  for (let tries = 0; ; tries++) {
+    try { await ref.set(body); return; }
+    catch (e) {
+      if ((e && (e.code === "resource_exhausted" || e.code === "unavailable")) && tries < 3) { await sleep(1500 * (tries + 1) + Math.random() * 500); continue; }
+      throw e;
+    }
+  }
+}
+async function importItems(items, bar) {
+  if (!db || S.busyImport) return;
+  S.busyImport = true; renderPreview();
+  const st = $("#importStatus"); st.classList.remove("err");
+  const fill = $("#parsePreview .progress");
+  if (fill) fill.hidden = false;
+  let done = 0; const base = Date.now();
+  try {
+    for (const it of items) {
+      await writeDoc(db.collection("examples").doc(), { ...it, addedAt: base + done });
+      done++;
+      st.textContent = `저장 중 ${done} / ${items.length}`;
+      const i = $("#parsePreview .progress i"); if (i) i.style.width = (done / items.length * 100) + "%";
+    }
+    st.textContent = `${done}건을 학습 자료에 넣었습니다.`;
+    S.pending = null; $("#bulk").value = ""; $("#file").value = ""; countBulk();
+  } catch (e) {
+    st.classList.add("err");
+    const code = e && e.code;
+    st.textContent = `${done}건까지 저장하고 멈췄습니다. ` + (code === "quota_exceeded" ? "저장 공간이 가득 찼습니다. 오래된 자료를 지운 뒤 다시 넣어 주세요."
+      : code === "invalid_argument" ? "이 화면에서는 자료를 넣을 권한이 없습니다." : "연결이 끊겼습니다. ‘인식하기’를 다시 누르면 남은 것만 넣습니다.");
+    if (code === "invalid_argument") canWrite = false;
+    S.pending = null;
+  } finally { S.busyImport = false; renderPreview(); renderLibrary(); }
+}
+async function saveOne() {
+  const it = normItem({ title: $("#fTitle").value, sub: $("#fSub").value, type: $("#fType").value, date: $("#fDate").value, body: $("#fBody").value });
+  const st = $("#importStatus"); st.classList.remove("err");
+  if (!it.title) { st.textContent = "제목을 입력해 주세요."; st.classList.add("err"); return; }
+  if (S.lib.some(x => keyOf(x) === keyOf(it))) { st.textContent = "같은 제목·날짜의 자료가 이미 있습니다."; st.classList.add("err"); return; }
+  try {
+    await writeDoc(db.collection("examples").doc(), { ...it, addedAt: Date.now() });
+    ["#fTitle", "#fSub", "#fBody", "#fDate"].forEach(q => $(q).value = "");
+    st.textContent = "한 건 넣었습니다.";
+  } catch (e) { st.classList.add("err"); st.textContent = e && e.code === "invalid_argument" ? "이 화면에서는 자료를 넣을 권한이 없습니다." : "저장하지 못했습니다. 다시 눌러 주세요."; }
+}
+async function removeEx(id) {
+  try { await db.collection("examples").doc(id).delete(); S.confirmDel = null; }
+  catch { $("#importStatus").textContent = "지우지 못했습니다. 다시 눌러 주세요."; }
+}
+async function wipeAll() {
+  const ids = S.lib.map(x => x.id); let n = 0;
+  S.wipeAsk = false; S.busyImport = true; renderLibrary();
+  const st = $("#importStatus");
+  try { for (const id of ids) { await db.collection("examples").doc(id).delete(); n++; if (n % 10 === 0) st.textContent = `지우는 중 ${n} / ${ids.length}`; } st.textContent = `${n}건을 모두 지웠습니다.`; }
+  catch { st.textContent = `${n}건까지 지우고 멈췄습니다. 다시 눌러 주세요.`; }
+  finally { S.busyImport = false; renderLibrary(); }
+}
+
+function typeCounts() { const m = new Map(); for (const x of S.lib) { const t = x.type || "미분류"; m.set(t, (m.get(t) || 0) + 1); } return m; }
+function filtered() {
+  const q = S.q.trim(), t = S.qType;
+  return S.lib.filter(x => (!t || (t === "미분류" ? !x.type : x.type === t)) && (!q || (x.title + " " + (x.sub || "") + " " + (x.body || "")).includes(q)));
+}
+function renderLibrary() {
+  const n = S.lib.length, withBody = S.lib.filter(x => x.body && x.body.trim()).length;
+  $("#libTotal").textContent = n.toLocaleString();
+  $("#libBody").textContent = n ? `· 본문 포함 ${withBody.toLocaleString()}건` : "";
+  $("#tabCount").textContent = n ? n.toLocaleString() : "";
+  const tc = typeCounts();
+  $("#typeBar").replaceChildren(...[...tc].sort((a, b) => b[1] - a[1]).map(([t, c]) => { const s = el("span", null, t); s.append(el("b", null, String(c))); return s; }));
+
+  const acc = $("#libAccess");
+  if (S.libState === "none") { acc.hidden = false; acc.textContent = "이 화면에서는 학습 자료를 불러올 수 없습니다. claude.ai에 로그인한 상태로 열어 주세요. 제목 뽑기는 학습 자료 없이 진행됩니다."; }
+  else if (!canWrite) { acc.hidden = false; acc.textContent = "보기 전용으로 열려 있어 자료를 넣거나 지울 수 없습니다. 편집 권한(Contributor 이상)이 필요합니다."; }
+  else acc.hidden = true;
+  const writable = !!db && canWrite && !S.busyImport;
+  ["#parseBulk", "#saveOne", "#analyze"].forEach(q => { $(q).disabled = q === "#analyze" ? (!sampleFn || !n || analyzing) : !writable; });
+  $("#file").disabled = !writable;
+  ["#guide", "#rules", "#banned"].forEach(q => { $(q).readOnly = !!db && !canWrite; });
+
+  const list = filtered();
+  const qTypeSel = $("#qType"), cur = S.qType;
+  opt(qTypeSel, [...tc.keys()].map(t => [t, `${t} ${tc.get(t)}`]), ["", "전체 유형"]);
+  qTypeSel.value = tc.has(cur) ? cur : ""; if (!tc.has(cur)) S.qType = "";
+  $("#listCount").textContent = n ? (list.length === n ? `${n.toLocaleString()}건` : `${list.length.toLocaleString()} / ${n.toLocaleString()}건`) : "";
+
+  const ul = $("#exList");
+  if (S.libState === "loading") ul.replaceChildren(el("li", "empty", "불러오는 중…"));
+  else if (!n) ul.replaceChildren(el("li", "empty", "아직 학습 자료가 없습니다. 왼쪽 ‘자료 넣기’에서 과거 피플면 기사를 붙여 넣거나 파일로 올리세요. 제목만 있어도 되고, 본문까지 있으면 비슷한 기사를 찾아 짝으로 참고합니다."));
+  else if (!list.length) ul.replaceChildren(el("li", "empty", "검색 결과가 없습니다."));
+  else ul.replaceChildren(...list.slice(0, S.show).map(exEl));
+  const more = $("#moreBox");
+  more.replaceChildren(...(list.length > S.show ? [btn(`더 보기 (${(list.length - S.show).toLocaleString()}건 남음)`, () => { S.show += 100; renderLibrary(); })] : []));
+  const wipe = $("#wipeBox");
+  if (!n || !writable) wipe.replaceChildren();
+  else if (S.wipeAsk) wipe.replaceChildren(el("span", "hint", `학습 자료 ${n}건을 모두 지울까요? 되돌릴 수 없습니다.`), btn("모두 지우기", wipeAll, "btn-line danger"), btn("취소", () => { S.wipeAsk = false; renderLibrary(); }));
+  else wipe.replaceChildren(btn("학습 자료 전부 지우기", () => { S.wipeAsk = true; renderLibrary(); }, "btn-line danger"));
+  renderLearnState();
+}
+function exEl(x) {
+  const li = el("li", "ex");
+  li.append(el("span", "ex-meta", [x.date, x.type || "미분류"].filter(Boolean).join(" · ")));
+  li.append(el("span", "ex-title", titleLine(x)));
+  if (x.sub) li.append(el("span", "ex-sub", x.sub));
+  const acts = el("div", "ex-acts");
+  if (x.body) {
+    const open = S.openEx.has(x.id);
+    acts.append(btn(open ? "본문 접기" : "본문 보기", () => { open ? S.openEx.delete(x.id) : S.openEx.add(x.id); renderLibrary(); }));
+  } else acts.append(el("span", "badge", "본문 없음"));
+  if (db && canWrite) {
+    if (S.confirmDel === x.id) acts.append(el("span", "hint", "지울까요?"), btn("지우기", () => removeEx(x.id), "btn-line danger"), btn("취소", () => { S.confirmDel = null; renderLibrary(); }));
+    else acts.append(btn("지우기", () => { S.confirmDel = x.id; renderLibrary(); }));
+  }
+  li.append(acts);
+  if (x.body && S.openEx.has(x.id)) li.append(el("p", "ex-body", x.body));
+  return li;
+}
+function renderLearnState() {
+  const p = $("#learnState"), n = S.lib.length;
+  p.replaceChildren();
+  if (S.libState === "none") { p.textContent = "학습 자료 없이 뽑습니다 (로그인 필요)."; return; }
+  if (S.libState === "loading") { p.textContent = "학습 자료 불러오는 중…"; return; }
+  if (!n) { p.append("학습 자료가 아직 없습니다. "); p.append(btn("과거 피플면 넣으러 가기", () => showTab("library"), "btn-link")); return; }
+  p.append("과거 피플면 "); p.append(el("b", null, n.toLocaleString() + "건")); p.append("을 참고합니다");
+  p.append(S.cfg.guide.trim() ? " · 스타일 가이드 적용" : " · 스타일 가이드 없음");
+  p.append(". ");
+  p.append(btn("학습 자료 보기", () => showTab("library"), "btn-link"));
+}
+
+/* ---- similarity: pick the past articles closest to this one ---- */
+const tokCache = new Map();
+function tokens(text) { const set = new Set(); for (const m of String(text).slice(0, 4000).matchAll(WORD)) { const s = stem(m[0]); if (s.length >= 2 && !/^\d+$/.test(s)) set.add(s); } return set; }
+function exTokens(x) { const k = x.id + ":" + x.addedAt; let t = tokCache.get(k); if (!t) { t = tokens(x.title + " " + (x.sub || "") + " " + (x.body || "")); tokCache.set(k, t); } return t; }
+function ranked(article) {
+  const N = S.lib.length; if (!N) return [];
+  const df = new Map();
+  for (const x of S.lib) for (const t of exTokens(x)) df.set(t, (df.get(t) || 0) + 1);
+  const q = tokens(article), type = S.artType;
+  return S.lib.map(x => {
+    let sc = 0; const et = exTokens(x);
+    for (const t of q) if (et.has(t)) sc += Math.log(1 + N / df.get(t));
+    if (type !== "auto" && x.type === type) sc += 25;
+    return { x, sc };
+  }).sort((a, b) => b.sc - a.sc).map(r => r.x);
+}
+function libraryBlock(article, headLimit, pairLimit) {
+  const parts = [];
+  if (S.cfg.guide.trim()) parts.push("[이 신문 피플면 제목 스타일 가이드: 반드시 따른다]", S.cfg.guide.trim().slice(0, 6000), "");
+  const r = ranked(article);
+  if (!r.length) return { text: parts.join("\n"), used: [] };
+  let budget = 30000; const heads = [];
+  for (const x of r.slice(0, headLimit)) {
+    const line = `- ${titleLine(x)}${x.sub ? ` (부제: ${x.sub})` : ""}${x.type ? ` [${x.type}]` : ""}`;
+    budget -= line.length; if (budget < 0) break; heads.push(line);
+  }
+  parts.push("[이 신문이 실제로 단 피플면 제목들. 이 기사와 가까운 순. 말투·길이·구조를 따르되 표현을 그대로 베끼지 않는다]", ...heads, "");
+  const pairs = r.filter(x => x.body && x.body.trim().length > 100).slice(0, pairLimit);
+  pairs.forEach((x, i) => {
+    parts.push(`[기사-제목 짝 예시 ${i + 1}${x.type ? ` · ${x.type}` : ""}]`, "기사: " + x.body.trim().slice(0, 1500), "제목: " + titleLine(x), ...(x.sub ? ["부제: " + x.sub] : []), "");
+  });
+  return { text: parts.join("\n"), used: pairs };
+}
+
+/* ---- Claude ---- */
+let sampleFn = null, ctl = null, analyzing = false, actl = null;
+const status = (msg, err) => { const p = $("#status"); p.textContent = msg; p.classList.toggle("err", !!err); };
+const TONE_TEXT = {
+  mix: "담백형(사실을 압축한 서술), 감성형(사연의 정서를 살리되 과하지 않게), 따옴표형(기사 속 본인 발언을 따옴표로 앞세움)을 골고루 섞는다.",
+  "담백": "모두 담백형: 사실을 압축한 서술. 꾸밈말을 줄인다.",
+  "감성": "모두 감성형: 사연의 정서를 살리되 과장하지 않는다.",
+  "따옴표형": "모두 따옴표형: 기사에 실제로 나온 본인 발언만 따옴표로 앞세운다. 발언은 뜻을 바꾸지 않는 선에서 줄여도 된다.",
+};
+function conditions() {
+  const s = S.cfg;
+  const sp = s.space === 1 ? "1자" : s.space === 0.5 ? "0.5자" : "0자(세지 않음)";
+  const hf = s.half ? "0.5자" : "1자";
+  const parts = [
+    "[지면 조건]",
+    `- 제목은 ${s.rows}행 이내, 각 행 ${s.per}자 이하. 넘기면 쓸 수 없다. 각 행을 ${s.per}자에 가깝게 채울수록 좋다.`,
+    `- 글자 수 세는 법: 한글·한자 1자, 띄어쓰기 ${sp}, 숫자·영문·문장부호 ${hf}.`,
+    s.sub ? `- 부제는 1행 ${s.subPer}자 이하. 제목에 쓴 단어를 되풀이하지 않고 제목이 못 담은 사실을 보탠다.` : "- 부제는 쓰지 않는다. sub는 빈 문자열.",
+    "",
+    "[원칙]",
+    "- 기사에 있는 사실만 쓴다. 이름·나이·숫자·직함은 기사 표기 그대로.",
+    "- 과장과 상투어(감동, 화제, 눈길, 훈훈)를 피한다. 직관적이고 묵직하게.",
+    "- 그 사람이 누구인지와 핵심 사연이 제목만 읽어도 드러나게 한다.",
+    "- 같은 제목 안에서 같은 단어를 되풀이하지 않는다.",
+    "- 과거 제목·예시 기사는 말투를 익히는 용도다. 그 안의 사실을 이번 제목에 가져오지 않는다.",
+  ];
+  if ((s.rules || "").trim()) parts.push("", "[이 신문의 편집 규칙]", s.rules.trim());
+  const bans = bannedTerms();
+  if (bans.length) parts.push("", "[금지어: 아래 말은 쓰지 않는다]", bans.join(", "));
+  return parts.join("\n");
+}
+const JSON_SHAPE = `JSON으로만 답한다. 형식:
+{"candidates":[{"lines":["1행","2행"],"sub":"부제","tone":"담백|감성|따옴표형","point":"이 후보가 무엇을 앞세웠는지 한 줄"}]}`;
+const typeNote = () => S.artType === "auto" ? "" : `이 기사의 유형: ${S.artType}`;
+function buildPrompt(article, lib) {
+  return [
+    "너는 신문 편집기자의 피플면(인물 기사) 제목 작업을 돕는다. 아래 기사로 제목 후보 6개를 만든다.",
+    "후보끼리 앞세우는 사실이나 각도가 겹치지 않게 한다.", typeNote(),
+    "", conditions(), "", lib.text,
+    "[톤]", TONE_TEXT[S.tone] || TONE_TEXT.mix,
+    "", "[이번 기사]", article.slice(0, 14000),
+    "", JSON_SHAPE,
+  ].join("\n");
+}
+function buildVaryPrompt(article, c, lib) {
+  return [
+    "너는 신문 편집기자의 피플면(인물 기사) 제목 작업을 돕는다.",
+    "편집기자가 아래 후보의 방향을 골랐다. 같은 각도를 유지하면서 표현을 바꾼 변주 3개를 만든다.", typeNote(),
+    "", "[고른 후보]", c.lines.join(" / ") + (c.sub ? `\n부제: ${c.sub}` : ""),
+    "", conditions(), "", lib.text,
+    "[이번 기사]", article.slice(0, 14000),
+    "", JSON_SHAPE,
+  ].join("\n");
+}
+function clean(out, origin) {
+  const arr = Array.isArray(out) ? out : out && Array.isArray(out.candidates) ? out.candidates : [];
+  return arr.filter(c => c && Array.isArray(c.lines) && c.lines.some(l => String(l).trim()))
+    .map(c => ({
+      id: uid(), lines: c.lines.map(l => String(l)).slice(0, 4), sub: String(c.sub || ""),
+      tone: ["담백", "감성", "따옴표형"].includes(c.tone) ? c.tone : "후보", point: String(c.point || ""), origin,
+    }));
+}
+const GONE = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
+function errCopy(e) {
+  const code = e && e.code;
+  if (code === "cancelled") return "멈췄습니다.";
+  if (e && e.detail) return e.detail;
+  if (GONE.includes(code)) { sampleFn = null; updateGen(); renderCands(); renderLibrary(); return "Claude 사용이 허용되지 않아 후보를 뽑을 수 없습니다. 직접 쓰기와 글자 수 확인은 그대로 쓸 수 있습니다."; }
+  if (code === "rate_limited") return "요청이 몰렸습니다. 잠시 뒤 다시 눌러 주세요.";
+  if (code === "session_expired") return "로그인이 만료됐습니다. 다시 로그인한 뒤 눌러 주세요.";
+  if (code === "prompt_too_large") return "보낼 내용이 너무 깁니다. 기사는 핵심 부분만 붙여 넣어 주세요.";
+  if (code === "refused") return "이 기사로는 후보를 만들지 못했습니다. 본문을 확인해 주세요.";
+  if (code === "invalid_json" || code === "empty_completion") return "후보를 제대로 받지 못했습니다. 한 번 더 눌러 주세요.";
+  return "연결이 끊겼습니다. 다시 눌러 주세요.";
+}
+function busy(on) {
+  $("#gen").disabled = on || !sampleFn;
+  $("#stop").hidden = !on;
+  document.querySelectorAll("[data-vary]").forEach(b => { b.disabled = on; });
+}
+function articleText() {
+  const a = $("#article").value.trim();
+  if (a.length < 40) { status("기사 본문을 붙여 넣어 주세요.", true); return null; }
+  return a;
+}
+function showUsed(used) {
+  const p = $("#usedNote");
+  if (!used.length) { p.hidden = true; return; }
+  p.hidden = false;
+  p.textContent = "짝으로 참고한 과거 기사: " + used.map(x => titleLine(x)).join("  ·  ");
+}
+async function generate() {
+  const art = articleText(); if (!art || !sampleFn) return;
+  ctl = new AbortController(); busy(true); status("제목 후보를 뽑는 중입니다. 30초쯤 걸릴 수 있습니다.");
+  const lib = libraryBlock(art, 250, 3);
+  try {
+    const out = await sampleFn.json(buildPrompt(art, lib), { signal: ctl.signal, cache: false });
+    const list = clean(out);
+    if (!list.length) throw { code: "invalid_json" };
+    S.cands = list; S.showingExample = false; renderCands(); showUsed(lib.used);
+    status(`후보 ${list.length}개를 뽑았습니다. 다시 누르면 새로 뽑습니다.`);
+    $("#gen").textContent = "다시 뽑기";
+  } catch (e) { status(errCopy(e), e && e.code !== "cancelled"); }
+  finally { ctl = null; busy(false); }
+}
+async function vary(c) {
+  const art = articleText(); if (!art || !sampleFn) return;
+  ctl = new AbortController(); busy(true); status("고른 방향으로 변주를 만드는 중입니다.");
+  try {
+    const out = await sampleFn.json(buildVaryPrompt(art, c, libraryBlock(art, 80, 2)), { signal: ctl.signal, cache: false });
+    const list = clean(out, "변주");
+    if (!list.length) throw { code: "invalid_json" };
+    const i = S.cands.indexOf(c);
+    S.cands.splice(i < 0 ? S.cands.length : i + 1, 0, ...list);
+    renderCands(); status(`변주 ${list.length}개를 고른 후보 바로 아래에 붙였습니다.`);
+  } catch (e) { status(errCopy(e), e && e.code !== "cancelled"); }
+  finally { ctl = null; busy(false); }
+}
+async function analyze() {
+  if (!sampleFn || !S.lib.length || analyzing) return;
+  const gs = $("#guideStatus"); gs.classList.remove("err");
+  const sorted = [...S.lib].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || b.addedAt - a.addedAt);
+  let budget = 60000; const lines = [];
+  for (const x of sorted) { const l = `- ${x.type ? `[${x.type}] ` : ""}${titleLine(x)}${x.sub ? ` (부제: ${x.sub})` : ""}`; budget -= l.length; if (budget < 0) break; lines.push(l); }
+  const prompt = [
+    `아래는 한 신문 피플면(인물 기사)에 실제로 실린 제목 ${lines.length}개다.`,
+    "이 신문 피플면 제목의 스타일 가이드를 써라. 편집기자가 새 제목을 달 때 그대로 따를 수 있도록 구체적으로 쓴다.",
+    "항목: 1) 행 구성과 한 행 길이 2) 이름·나이·직함 표기 3) 따옴표 제목을 쓰는 경우와 형식 4) 자주 쓰는 어미와 문장 구조 5) 유형별(부고·수상·은퇴 등) 패턴 6) 쓰지 않는 표현.",
+    "각 항목은 짧은 불릿(-)으로 쓰고, 실제 제목을 예로 1~2개 인용한다. 자료에서 확인되지 않는 규칙은 지어내지 않는다. 마크다운 제목(#)이나 굵은 글씨 없이 일반 텍스트로, 전체 1500자 이내.",
+    "", "[제목 목록]", ...lines,
+  ].join("\n");
+  analyzing = true; actl = new AbortController();
+  $("#analyze").disabled = true; $("#stopAnalyze").hidden = false;
+  const before = S.cfg.guide; const ta = $("#guide");
+  gs.textContent = `제목 ${lines.length}개를 읽고 정리하는 중입니다. 1분쯤 걸릴 수 있습니다.`;
+  try {
+    const { text } = await sampleFn(prompt, { signal: actl.signal, cache: false, onText: ({ text }) => { ta.value = text; } });
+    S.cfg.guide = text.trim(); S.cfg.guideAt = Date.now(); saveCfg();
+    gs.textContent = "스타일 가이드를 저장했습니다. 다음 후보부터 적용됩니다.";
+  } catch (e) {
+    ta.value = before;
+    if (e && e.code !== "cancelled") { gs.classList.add("err"); gs.textContent = errCopy(e); } else gs.textContent = "멈췄습니다. 이전 가이드를 그대로 둡니다.";
+  } finally { analyzing = false; actl = null; $("#stopAnalyze").hidden = true; fillCfgControls(false); renderLibrary(); }
+}
+function updateGen() {
+  $("#gen").disabled = !sampleFn || !!ctl;
+  if (!sampleFn) $("#gen").title = "이 화면에서는 Claude를 부를 수 없습니다"; else $("#gen").removeAttribute("title");
+}
+
+/* ---- tabs and wiring ---- */
+function showTab(t) {
+  if (t !== "library") t = "work";
+  ["work", "library"].forEach(x => { $("#tab-" + x).hidden = x !== t; $("#tb-" + x).setAttribute("aria-selected", String(x === t)); });
+  try { history.replaceState(null, "", "#" + t); } catch {}
+}
+function setMode(m) {
+  S.mode = m;
+  document.querySelectorAll(".seg button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.mode === m)));
+  ["paste", "file", "form"].forEach(x => { $("#mode-" + x).hidden = x !== m; });
+}
+function countBulk() { const v = $("#bulk").value; $("#bulkCount").textContent = v.trim() ? `${v.length.toLocaleString()}자` : ""; }
+function bind() {
+  opt($("#artType"), TYPES.map(t => [t, t]), ["auto", "자동 (비슷한 과거 기사 찾기)"]);
+  opt($("#fType"), TYPES.map(t => [t, t]), ["", "고르지 않음"]);
+  fillCfgControls(true);
+  document.querySelectorAll('input[name="tone"]').forEach(r => { r.checked = r.value === S.tone; r.addEventListener("change", () => { S.tone = r.value; persistLocal(); }); });
+  const num = (v, lo, hi, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+  const onSet = () => {
+    const s = S.cfg;
+    s.rows = num($("#rows").value, 1, 3, 2); s.per = num($("#per").value, 6, 40, 14);
+    s.sub = $("#useSub").checked; s.subPer = num($("#subPer").value, 6, 60, 20);
+    s.space = Number($("#space").value); s.half = $("#half").checked;
+    $("#subPer").disabled = !s.sub;
+    saveCfg(); renderWork();
+  };
+  ["#rows", "#space", "#useSub", "#half"].forEach(q => $(q).addEventListener("change", onSet));
+  ["#per", "#subPer"].forEach(q => $(q).addEventListener("input", () => { if ($(q).value !== "") onSet(); }));
+  $("#rules").addEventListener("input", e => { S.cfg.rules = e.target.value; saveCfg(); });
+  $("#banned").addEventListener("input", e => { S.cfg.banned = e.target.value; saveCfg(); renderWork(); });
+  $("#guide").addEventListener("input", e => { if (analyzing) return; S.cfg.guide = e.target.value; saveCfg(); renderLearnState(); });
+  $("#artType").addEventListener("change", e => { S.artType = e.target.value; });
+
+  const art = $("#article");
+  const count = () => { $("#artCount").textContent = art.value.trim() ? `${art.value.trim().length.toLocaleString()}자` : ""; };
+  art.value = EXAMPLE_ARTICLE; count();
+  art.addEventListener("input", count);
+  $("#gen").onclick = generate;
+  $("#stop").onclick = () => ctl && ctl.abort();
+  $("#clearSaved").onclick = () => { S.saved = []; persistLocal(); renderSaved(); };
+
+  $("#tb-work").onclick = () => showTab("work");
+  $("#tb-library").onclick = () => showTab("library");
+  document.querySelectorAll(".seg button").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+  $("#bulk").addEventListener("input", countBulk);
+  $("#parseBulk").onclick = () => {
+    const v = $("#bulk").value;
+    if (!v.trim()) { $("#importStatus").textContent = "붙여 넣은 내용이 없습니다."; return; }
+    $("#importStatus").textContent = ""; stage(parseAny(v, ""), "paste");
+  };
+  $("#file").addEventListener("change", async e => {
+    const files = [...e.target.files]; if (!files.length) return;
+    const st = $("#importStatus"); st.classList.remove("err"); st.textContent = "파일을 읽는 중…";
+    const all = [];
+    for (const f of files) { try { all.push(...parseAny(await readFile(f), f.name)); } catch { st.classList.add("err"); st.textContent = `${f.name}을(를) 읽지 못했습니다.`; } }
+    if (!st.classList.contains("err")) st.textContent = `파일 ${files.length}개에서 ${all.length}건을 찾았습니다.`;
+    stage(all, "file");
+  });
+  $("#saveOne").onclick = saveOne;
+  $("#q").addEventListener("input", e => { S.q = e.target.value; S.show = 50; renderLibrary(); });
+  $("#qType").addEventListener("change", e => { S.qType = e.target.value; S.show = 50; renderLibrary(); });
+  $("#analyze").onclick = analyze;
+  $("#stopAnalyze").onclick = () => actl && actl.abort();
+  setMode("paste");
+  showTab(location.hash.slice(1));
+}
+
+bind();
+updateGen();
+renderWork();
+renderLibrary();
+
+const NO_CLAUDE = "이 화면에서는 Claude를 부를 수 없습니다. 직접 쓰기와 글자 수 확인은 그대로 쓸 수 있습니다.";
+if (window.claude && typeof window.claude.use === "function") {
+  status("Claude 연결 중…");
+  window.claude.use("sample").then(s => {
+    sampleFn = s; updateGen(); renderCands(); renderLibrary();
+    status(s ? "" : NO_CLAUDE, !s);
+  }).catch(() => status(NO_CLAUDE, true));
+  Promise.all([window.claude.use("db"), window.claude.use("user").catch(() => null)]).then(async ([d, u]) => {
+    if (!d) { S.libState = "none"; renderLibrary(); return; }
+    db = d;
+    const w = u ? await u.can("data.write").catch(() => null) : null;
+    canWrite = w !== false;
+    db.doc("config/main").onSnapshot(snap => { if (snap.exists && !snap.metadata.hasPendingWrites) applyRemoteCfg(snap.data()); }, () => {});
+    db.collection("examples").orderBy("addedAt", "desc").limit(1000).onSnapshot(snap => {
+      S.lib = snap.docs.map(x => ({ id: x.id, ...x.data() }));
+      S.libState = "ready"; renderLibrary(); if (S.pending) renderPreview();
+    }, () => { S.libState = "none"; renderLibrary(); });
+    renderLibrary();
+  }).catch(() => { S.libState = "none"; renderLibrary(); });
+} else {
+  status(NO_CLAUDE, true);
+  S.libState = "none"; renderLibrary();
+}
+</script>
