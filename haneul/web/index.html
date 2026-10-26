@@ -47,6 +47,7 @@ body {
   padding-block: 24px 48px;
 }
 .wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 24px; }
+.wrap > [role="tabpanel"] { width: 100%; min-width: 0; }
 h1, h2, h3 { font-family: var(--f-head); text-wrap: balance; margin: 0; }
 h1 { font-size: 28px; font-weight: 900; letter-spacing: -0.01em; }
 h2 { font-size: 19px; font-weight: 700; }
@@ -185,15 +186,24 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
 .preview-box .sum { font-size: 14px; font-weight: 600; margin: 0; }
 .progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .progress i { display: block; height: 100%; background: var(--accent); width: 0; }
-.filters { display: grid; grid-template-columns: minmax(0, 1fr) 140px; gap: 8px; }
+.filters { display: grid; grid-template-columns: minmax(0, 1fr) 130px 120px; gap: 8px; }
+@media (max-width: 520px) { .filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .filters input { grid-column: 1 / -1; } }
 .exlist { list-style: none; margin: 0; padding: 0; display: grid; }
-.ex { border-top: 1px solid var(--line); padding: 10px 0; display: grid; gap: 4px; }
-.ex:first-child { border-top: none; }
+.exrow { border-top: 1px solid var(--line); padding: 10px 0; display: grid; gap: 4px; }
+.exrow:first-child { border-top: none; }
 .ex-meta { font-size: 12px; color: var(--muted); font-family: var(--f-num); }
 .ex-title { font-family: var(--f-head); font-weight: 700; font-size: 15.5px; }
 .ex-sub { font-size: 13.5px; color: var(--muted); }
 .ex-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 13px; }
 .ex-body { margin: 4px 0 0; font-size: 13.5px; white-space: pre-wrap; background: var(--paper); border-radius: 4px; padding: 10px 12px; max-height: 280px; overflow-y: auto; }
+.tag.outlet { background: var(--ink); color: var(--paper); }
+.tag.outlet.cmp { background: transparent; color: var(--ink); border: 1px solid var(--ink); }
+.styles { margin: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); display: grid; gap: 6px; font-size: 13.5px; }
+.styles h3 { font-size: 14px; }
+.styles ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+.chips input:disabled + span { opacity: 0.45; }
+.assign { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: 13px; padding: 10px 12px; border-radius: 4px; background: var(--accent-soft); }
+.assign input { width: 160px; }
 .badge { font-size: 11.5px; border: 1px solid var(--line); border-radius: 3px; padding: 0 6px; color: var(--muted); }
 #guide { min-height: 260px; font-size: 14px; }
 @media (prefers-reduced-motion: no-preference) { .progress i { transition: width .2s; } }
@@ -222,6 +232,19 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
           <label class="lab" for="artType">기사 유형</label>
           <select id="artType"></select>
         </div>
+
+        <fieldset>
+          <legend>매체 스타일</legend>
+          <div class="field">
+            <label class="lab" for="base">기준 매체</label>
+            <select id="base"></select>
+          </div>
+          <div class="field">
+            <span class="lab">다른 매체 스타일도 추천 (최대 3곳, 2개씩)</span>
+            <div class="chips" id="compareChips"></div>
+          </div>
+          <p class="hint" id="styleHint"></p>
+        </fieldset>
 
         <fieldset>
           <legend>지면 칸</legend>
@@ -278,6 +301,7 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
           <div class="legend"><span><i class="lg-dup"></i>겹친 말</span><span><i class="lg-ban"></i>금지어</span><span><i class="lg-over"></i>칸 초과</span></div>
         </div>
         <p class="banner" id="exampleNote">아래는 예시 기사로 뽑은 예시 후보입니다. 왼쪽에 실제 기사를 붙여 넣고 ‘제목 후보 뽑기’를 누르세요.</p>
+        <div class="styles" id="styleNotes" hidden></div>
         <p class="used" id="usedNote" hidden></p>
         <div id="manual"></div>
         <div class="cards" id="cands"></div>
@@ -297,6 +321,7 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
   <div id="tab-library" role="tabpanel" aria-labelledby="tb-library" class="wrap" hidden>
     <div class="lib-top">
       <div class="big"><b id="libTotal">0</b><span>건 학습 중</span><span id="libBody"></span></div>
+      <div class="typebar" id="outletBar"></div>
       <div class="typebar" id="typeBar"></div>
     </div>
     <p class="access" id="libAccess" hidden></p>
@@ -313,15 +338,22 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
             </div>
           </div>
 
+          <div class="field">
+            <label class="lab" for="impOutlet">이 자료의 매체</label>
+            <input id="impOutlet" type="text" list="outletList" placeholder="예: 조선일보 (자료에 ‘매체:’가 없을 때 이 값으로 넣습니다)">
+            <datalist id="outletList"></datalist>
+          </div>
+
           <div id="mode-paste" class="field">
             <label class="lab" for="bulk"><span>여러 건 한꺼번에</span><span class="num" id="bulkCount"></span></label>
             <textarea id="bulk" rows="10" spellcheck="false" placeholder="제목: 34년 구둣방 닫는 / 박정순씨의 마지막 망치&#10;부제: 손목 탓 이달 말 구둣방 정리&#10;유형: 은퇴&#10;날짜: 2025-03-02&#10;본문:&#10;서울 ○○시장 골목 끝에서 …&#10;===&#10;제목: …"></textarea>
             <details class="fmt">
               <summary>넣는 형식 보기</summary>
               <div class="inner">
-                <p class="hint">기사 사이는 <b>===</b> 한 줄로 나눕니다. 제목의 행 구분은 <b>/</b>. 본문은 맨 마지막에 씁니다. 부제·유형·날짜·본문은 없어도 됩니다.</p>
+                <p class="hint">기사 사이는 <b>===</b> 한 줄로 나눕니다. 제목의 행 구분은 <b>/</b>. 본문은 맨 마지막에 씁니다. 부제·매체·유형·날짜·본문은 없어도 됩니다. 매체가 없으면 위 ‘이 자료의 매체’ 값이 들어갑니다.</p>
 <pre>제목: 34년 구둣방 닫는 / 박정순씨의 마지막 망치
 부제: 손목 탓 이달 말 구둣방 정리
+매체: 조선일보
 유형: 은퇴
 날짜: 2025-03-02
 본문:
@@ -330,7 +362,7 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
 제목: “닳은 굽만 봐도 / 사는 게 보여요”
 본문:
 …</pre>
-                <p class="hint">엑셀에서 표째로 복사해 붙여도 됩니다. 첫 줄 머리글을 <b>제목, 부제, 유형, 날짜, 본문</b>으로 맞춰 주세요.</p>
+                <p class="hint">엑셀에서 표째로 복사해 붙여도 됩니다. 첫 줄 머리글을 <b>제목, 부제, 매체, 유형, 날짜, 본문</b>으로 맞춰 주세요.</p>
               </div>
             </details>
             <details class="fmt" id="aiBox">
@@ -347,7 +379,7 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
           <div id="mode-file" class="field" hidden>
             <label class="lab" for="file">파일 올리기 (여러 개 가능)</label>
             <input id="file" type="file" multiple accept=".txt,.csv,.tsv,.json,.md,text/plain,text/csv,application/json">
-            <p class="hint">TXT는 붙여넣기와 같은 형식, CSV는 첫 줄 머리글이 <b>제목,부제,유형,날짜,본문</b>. 엑셀 파일은 ‘CSV로 저장’해서 올리세요. 한글 CSV(EUC-KR)도 읽습니다.</p>
+            <p class="hint">TXT는 붙여넣기와 같은 형식, CSV는 첫 줄 머리글이 <b>제목,부제,매체,유형,날짜,본문</b>(매체는 없어도 됨). 엑셀 파일은 ‘CSV로 저장’해서 올리세요. 한글 CSV(EUC-KR)도 읽습니다.</p>
           </div>
 
           <div id="mode-form" class="field" hidden>
@@ -370,7 +402,11 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
             <h2>스타일 가이드</h2>
             <span class="hint" id="guideAt"></span>
           </div>
-          <p class="hint">쌓인 제목을 Claude가 읽고 이 신문 피플면 제목의 규칙을 정리합니다. 후보를 뽑을 때마다 이 가이드를 따릅니다. 직접 고쳐도 되고, 고친 내용은 바로 저장됩니다.</p>
+          <p class="hint">매체마다 쌓인 제목을 Claude가 읽고 그 매체 피플면 제목의 규칙을 정리합니다. 후보를 뽑을 때 기준 매체와 비교 매체의 가이드를 각각 따릅니다. 직접 고쳐도 되고, 고친 내용은 바로 저장됩니다.</p>
+          <div class="field">
+            <label class="lab" for="guideOutlet">어느 매체의 가이드</label>
+            <select id="guideOutlet"></select>
+          </div>
           <textarea id="guide" spellcheck="false" placeholder="자료를 넣은 뒤 ‘제목 스타일 분석’을 누르세요."></textarea>
           <div class="go">
             <button class="btn-line" id="analyze" type="button">제목 스타일 분석</button>
@@ -407,7 +443,13 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
         </div>
         <div class="filters">
           <input id="q" type="search" placeholder="제목·본문 검색" aria-label="검색">
+          <select id="qOutlet" aria-label="매체"></select>
           <select id="qType" aria-label="유형"></select>
+        </div>
+        <div class="assign" id="assignBox" hidden>
+          <span id="assignText"></span>
+          <input id="assignOutlet" type="text" list="outletList" placeholder="매체 이름" aria-label="지정할 매체">
+          <button class="btn-line" id="assignBtn" type="button">매체 지정</button>
         </div>
         <ul class="exlist" id="exList"></ul>
         <div class="go" id="moreBox"></div>
@@ -423,6 +465,7 @@ const AI_PROMPT = `너는 신문 피플면 기사를 정리하는 담당자다. 
 [형식]
 제목: 지면에 실린 제목. 제목이 여러 행이면 행 사이에 " / "를 넣는다
 부제: 부제. 없으면 이 줄을 통째로 뺀다
+매체: 신문·매체 이름. 알 수 없으면 이 줄을 통째로 뺀다
 유형: 부고, 수상, 은퇴, 취임·인사, 인터뷰, 선행·기부, 기타 중 하나
 날짜: 게재일 YYYY-MM-DD. 알 수 없으면 이 줄을 통째로 뺀다
 본문:
@@ -431,7 +474,7 @@ const AI_PROMPT = `너는 신문 피플면 기사를 정리하는 담당자다. 
 
 [규칙]
 1. 기사 한 건이 한 덩어리다. 덩어리와 덩어리 사이에는 === 한 줄만 넣는다.
-2. 항목 이름(제목:, 부제:, 유형:, 날짜:, 본문:)과 순서를 바꾸지 않는다. 본문은 늘 맨 마지막이다.
+2. 항목 이름(제목:, 부제:, 매체:, 유형:, 날짜:, 본문:)과 순서를 바꾸지 않는다. 본문은 늘 맨 마지막이다.
 3. 제목·부제·본문은 원문 그대로 옮긴다. 요약하거나 다듬거나 맞춤법을 고치지 않는다. 문장을 새로 지어내지 않는다.
 4. 본문에서 사진 설명, 기자 이름과 이메일, 저작권 문구, 광고, 관련 기사 목록은 뺀다.
 5. 제목을 확인할 수 없는 기사는 제목을 지어내지 말고, 맨 끝에 "제목 확인 필요" 아래에 첫 문장만 적는다.
@@ -469,7 +512,8 @@ let seq = 0;
 const uid = () => "c" + Date.now().toString(36) + (seq++);
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const CFG_DEFAULT = { rows: 2, per: 14, sub: true, subPer: 20, space: 1, half: false, rules: "", banned: "", guide: "", guideAt: 0 };
+const CFG_DEFAULT = { rows: 2, per: 14, sub: true, subPer: 20, space: 1, half: false, rules: "", banned: "", guide: "", guideAt: 0, guides: {} };
+const ALL = "*"; // 매체 구분 없이 전체
 const S = {
   cfg: Object.assign({}, CFG_DEFAULT, saved0.set || {}, saved0.cfg || {}),
   tone: saved0.tone || "mix",
@@ -478,10 +522,11 @@ const S = {
   showingExample: true,
   manual: { id: "manual", lines: ["", ""], sub: "", tone: "직접 쓰기", point: "" },
   artType: "auto",
+  base: saved0.base || "", compare: Array.isArray(saved0.compare) ? saved0.compare : [], guideOutlet: ALL, styleNotes: [],
   lib: [], libState: "loading",
-  pending: null, pendingCfg: null, useCfg: false, mode: "paste", q: "", qType: "", show: 50, openEx: new Set(), confirmDel: null, wipeAsk: false, busyImport: false,
+  pending: null, pendingCfg: null, useCfg: false, mode: "paste", q: "", qType: "", qOutlet: ALL, show: 50, openEx: new Set(), confirmDel: null, wipeAsk: false, busyImport: false,
 };
-const persistLocal = () => store.set(KEY, { cfg: S.cfg, tone: S.tone, saved: S.saved });
+const persistLocal = () => store.set(KEY, { cfg: S.cfg, tone: S.tone, saved: S.saved, base: S.base, compare: S.compare });
 
 const $ = s => document.querySelector(s);
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -601,6 +646,7 @@ function editorEl(c, refresh) {
 function cardEl(c, kind) {
   const card = el("article", "card" + (kind === "manual" ? " manual" : ""));
   const head = el("div", "card-head");
+  if (c.outlet && c.outlet !== ALL) head.append(el("span", "tag outlet" + (c.outlet === effectiveBase() ? "" : " cmp"), c.outlet + " 스타일"));
   head.append(el("span", "tag", c.tone || "후보"));
   if (c.example) head.append(el("span", "tag ex", "예시"));
   if (c.origin) head.append(el("span", "tag ex", c.origin));
@@ -634,10 +680,18 @@ function cardEl(c, kind) {
 }
 function saveCand(c, b) {
   if (!c.lines.some(l => l.trim())) { flash(b, "빈 제목"); return; }
-  S.saved.unshift({ id: uid(), lines: c.lines.map(l => l.trim()).filter(Boolean), sub: (c.sub || "").trim(), tone: c.tone, point: c.point || "" });
+  S.saved.unshift({ id: uid(), lines: c.lines.map(l => l.trim()).filter(Boolean), sub: (c.sub || "").trim(), tone: c.tone, point: c.point || "", outlet: c.outlet || "" });
   persistLocal(); renderSaved(); flash(b, "담음");
 }
+function renderStyleNotes() {
+  const box = $("#styleNotes");
+  if (!S.styleNotes.length || S.showingExample) { box.hidden = true; return; }
+  const ul = el("ul");
+  S.styleNotes.forEach(n => { const li = el("li"); li.append(el("b", null, n.outlet + " "), n.note); ul.append(li); });
+  box.replaceChildren(el("h3", null, "매체별 제목 특징"), ul); box.hidden = false;
+}
 function renderCands() {
+  renderStyleNotes();
   $("#cands").replaceChildren(...S.cands.map(c => cardEl(c, "cand")));
   $("#candCount").textContent = S.cands.length ? `${S.cands.length}개` : "";
   $("#exampleNote").hidden = !S.showingExample;
@@ -678,8 +732,9 @@ function fillCfgControls(force) {
   put("#useSub", e => e.checked = s.sub); put("#subPer", e => { e.value = s.subPer; e.disabled = !s.sub; });
   put("#space", e => e.value = String(s.space)); put("#half", e => e.checked = s.half);
   put("#rules", e => e.value = s.rules || ""); put("#banned", e => e.value = s.banned || "");
-  if (!analyzing) put("#guide", e => e.value = s.guide || "");
-  $("#guideAt").textContent = s.guideAt ? "마지막 분석 " + new Date(s.guideAt).toLocaleDateString("ko-KR") : "";
+  if (!analyzing) put("#guide", e => e.value = guideFor(S.guideOutlet));
+  const at = guideAtFor(S.guideOutlet);
+  $("#guideAt").textContent = at ? "마지막 분석 " + new Date(at).toLocaleDateString("ko-KR") : "";
 }
 function applyRemoteCfg(d) {
   if (cfgDone < cfgSeq) return;
@@ -691,13 +746,34 @@ function applyRemoteCfg(d) {
 
 /* ---- library (db: examples) ---- */
 const normTitle = t => String(t || "").replace(/\s+/g, "");
-const keyOf = it => normTitle(it.title) + "|" + String(it.date || "").trim();
+const keyOf = it => normTitle(it.title) + "|" + String(it.date || "").trim() + "|" + String(it.outlet || "").trim();
 const titleLine = it => String(it.title || "").split("\n").map(s => s.trim()).filter(Boolean).join(" / ");
+const outletName = o => o === ALL ? "전체" : (o || "매체 미지정");
+function outletCounts() { const m = new Map(); for (const x of S.lib) { const o = x.outlet || ""; m.set(o, (m.get(o) || 0) + 1); } return m; }
+function outlets() { return [...outletCounts()].sort((a, b) => b[1] - a[1]).map(([o]) => o); }
+const pool = o => o === ALL ? S.lib : S.lib.filter(x => (x.outlet || "") === o);
+const guides = () => (S.cfg.guides && typeof S.cfg.guides === "object" ? S.cfg.guides : {});
+function guideFor(o) { if (o === ALL) return S.cfg.guide || ""; const g = guides()[o || ""]; return (g && g.text) || ""; }
+function guideAtFor(o) { if (o === ALL) return S.cfg.guideAt || 0; const g = guides()[o || ""]; return (g && g.at) || 0; }
+function setGuide(o, text, at) {
+  if (o === ALL) { S.cfg.guide = text; if (at) S.cfg.guideAt = at; }
+  else { const g = { ...guides() }; g[o || ""] = { text, at: at || guideAtFor(o) }; S.cfg.guides = g; }
+}
+function effectiveBase() {
+  const os = outlets();
+  if (S.base === ALL) return ALL;
+  if (S.base && os.includes(S.base)) return S.base;
+  const named = os.filter(Boolean);
+  if (named.includes("조선일보")) return "조선일보"; // 김하늘 기자 지면
+  return named.length ? named[0] : ALL;
+}
+const effectiveCompare = () => { const b = effectiveBase(), os = outlets(); return S.compare.filter(o => o && o !== b && os.includes(o)).slice(0, 3); };
 const KEYMAP = { "제목": "title", "헤드라인": "title", "title": "title", "부제": "sub", "부제목": "sub", "sub": "sub", "subtitle": "sub",
-  "유형": "type", "분류": "type", "type": "type", "날짜": "date", "게재일": "date", "date": "date", "본문": "body", "기사": "body", "body": "body", "article": "body" };
+  "유형": "type", "분류": "type", "type": "type", "날짜": "date", "게재일": "date", "date": "date", "본문": "body", "기사": "body", "body": "body", "article": "body",
+  "매체": "outlet", "언론사": "outlet", "신문": "outlet", "신문사": "outlet", "outlet": "outlet", "media": "outlet" };
 const keyField = k => KEYMAP[String(k).replace(/^﻿/, "").trim().toLowerCase()];
 function normItem(o) {
-  const it = { title: "", sub: "", type: "", date: "", body: "" };
+  const it = { title: "", sub: "", outlet: "", type: "", date: "", body: "" };
   for (const [k, v] of Object.entries(o || {})) { const f = keyField(k); if (f && v != null) it[f] = String(v).trim(); }
   it.title = it.title.split(/\s*(?:\/|\||\n)\s*/).filter(Boolean).join("\n");
   it.body = it.body.slice(0, 20000);
@@ -750,7 +826,7 @@ function parseAny(txt, name) {
   if (lower.endsWith(".tsv")) return parseDelimited(txt, "\t");
   return parseBlocks(txt);
 }
-const CFG_KEYS = ["rows", "per", "sub", "subPer", "space", "half", "rules", "banned", "guide", "guideAt"];
+const CFG_KEYS = ["rows", "per", "sub", "subPer", "space", "half", "rules", "banned", "guide", "guideAt", "guides"];
 function parseCfg(txt) {
   try {
     const j = JSON.parse(txt.replace(/^\uFEFF/, ""));
@@ -763,17 +839,17 @@ function parseCfg(txt) {
 }
 function applyCfg(c) {
   const next = Object.assign({}, S.cfg);
-  for (const k of CFG_KEYS) if (c[k] !== undefined && typeof c[k] === typeof CFG_DEFAULT[k]) next[k] = c[k];
+  for (const k of CFG_KEYS) if (c[k] !== undefined && c[k] !== null && typeof c[k] === typeof CFG_DEFAULT[k]) next[k] = k === "guides" ? { ...guides(), ...c[k] } : c[k];
   S.cfg = next; saveCfg(); fillCfgControls(true); renderWork();
 }
 let downloadsFn = null;
 async function exportAll() {
   const st = $("#exportStatus"); st.classList.remove("err");
-  if (!S.lib.length && !S.cfg.guide.trim()) { st.textContent = "내보낼 자료가 아직 없습니다."; return; }
+  if (!S.lib.length && !S.cfg.guide.trim() && !Object.keys(guides()).length) { st.textContent = "내보낼 자료가 아직 없습니다."; return; }
   const body = {
     format: "haneul-export", version: 1, exportedAt: new Date().toISOString(), count: S.lib.length,
     config: Object.fromEntries(CFG_KEYS.map(k => [k, S.cfg[k]])),
-    examples: S.lib.map(({ title, sub, type, date, body }) => ({ title, sub: sub || "", type: type || "", date: date || "", body: body || "" })),
+    examples: S.lib.map(({ title, sub, outlet, type, date, body }) => ({ title, sub: sub || "", outlet: outlet || "", type: type || "", date: date || "", body: body || "" })),
   };
   const d = new Date(), pad = n => String(n).padStart(2, "0");
   const name = `haneul_export_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
@@ -793,6 +869,8 @@ async function readFile(file) {
   return t;
 }
 function stage(items, from) {
+  const def = $("#impOutlet").value.trim();
+  if (def) items.forEach(it => { if (!it.outlet) it.outlet = def; });
   const have = new Set(S.lib.map(keyOf)), seen = new Set();
   const ok = [], dup = [], bad = [];
   for (const it of items) {
@@ -814,7 +892,9 @@ function renderPreview() {
   wrap.append(el("p", "sum", bits.join(" · ")));
   if (p.ok.length) {
     const ol = el("ol");
-    p.ok.slice(0, 5).forEach(it => ol.append(el("li", null, titleLine(it) + (it.type ? `  [${it.type}]` : "") + (it.body ? "" : "  (본문 없음)"))));
+    p.ok.slice(0, 5).forEach(it => ol.append(el("li", null, titleLine(it) + `  [${outletName(it.outlet)}${it.type ? " · " + it.type : ""}]` + (it.body ? "" : "  (본문 없음)"))));
+    const oc = new Map(); p.ok.forEach(it => oc.set(it.outlet || "", (oc.get(it.outlet || "") || 0) + 1));
+    wrap.append(el("p", "hint", "매체별: " + [...oc].map(([o, c]) => `${outletName(o)} ${c}건`).join(" · ")));
     if (p.ok.length > 5) ol.append(el("li", "hint", `외 ${p.ok.length - 5}건`));
     wrap.append(ol);
   }
@@ -872,15 +952,32 @@ async function importItems(items, bar) {
   } finally { S.busyImport = false; renderPreview(); renderLibrary(); }
 }
 async function saveOne() {
-  const it = normItem({ title: $("#fTitle").value, sub: $("#fSub").value, type: $("#fType").value, date: $("#fDate").value, body: $("#fBody").value });
+  const it = normItem({ title: $("#fTitle").value, sub: $("#fSub").value, outlet: $("#impOutlet").value, type: $("#fType").value, date: $("#fDate").value, body: $("#fBody").value });
   const st = $("#importStatus"); st.classList.remove("err");
   if (!it.title) { st.textContent = "제목을 입력해 주세요."; st.classList.add("err"); return; }
-  if (S.lib.some(x => keyOf(x) === keyOf(it))) { st.textContent = "같은 제목·날짜의 자료가 이미 있습니다."; st.classList.add("err"); return; }
+  if (S.lib.some(x => keyOf(x) === keyOf(it))) { st.textContent = "같은 제목·날짜·매체의 자료가 이미 있습니다."; st.classList.add("err"); return; }
   try {
     await writeDoc(db.collection("examples").doc(), { ...it, addedAt: Date.now() });
     ["#fTitle", "#fSub", "#fBody", "#fDate"].forEach(q => $(q).value = "");
     st.textContent = "한 건 넣었습니다.";
   } catch (e) { st.classList.add("err"); st.textContent = e && e.code === "invalid_argument" ? "이 화면에서는 자료를 넣을 권한이 없습니다." : "저장하지 못했습니다. 다시 눌러 주세요."; }
+}
+async function assignOutlet() {
+  const name = $("#assignOutlet").value.trim(), st = $("#importStatus");
+  if (!name) { $("#assignOutlet").focus(); return; }
+  const ids = filtered().filter(x => !x.outlet).map(x => x.id);
+  S.busyImport = true; renderLibrary(); let n = 0;
+  try {
+    for (const id of ids) {
+      for (let tries = 0; ; tries++) {
+        try { await db.collection("examples").doc(id).update({ outlet: name }); break; }
+        catch (e) { if (e && (e.code === "resource_exhausted" || e.code === "unavailable") && tries < 3) { await sleep(1500 * (tries + 1)); continue; } throw e; }
+      }
+      n++; if (n % 10 === 0) st.textContent = `매체 지정 중 ${n} / ${ids.length}`;
+    }
+    st.textContent = `${n}건을 ‘${name}’로 지정했습니다.`; $("#assignOutlet").value = "";
+  } catch { st.textContent = `${n}건까지 지정하고 멈췄습니다. 다시 눌러 주세요.`; }
+  finally { S.busyImport = false; renderLibrary(); }
 }
 async function removeEx(id) {
   try { await db.collection("examples").doc(id).delete(); S.confirmDel = null; }
@@ -897,14 +994,17 @@ async function wipeAll() {
 
 function typeCounts() { const m = new Map(); for (const x of S.lib) { const t = x.type || "미분류"; m.set(t, (m.get(t) || 0) + 1); } return m; }
 function filtered() {
-  const q = S.q.trim(), t = S.qType;
-  return S.lib.filter(x => (!t || (t === "미분류" ? !x.type : x.type === t)) && (!q || (x.title + " " + (x.sub || "") + " " + (x.body || "")).includes(q)));
+  const q = S.q.trim(), t = S.qType, o = S.qOutlet;
+  return S.lib.filter(x => (o === ALL || (x.outlet || "") === o) && (!t || (t === "미분류" ? !x.type : x.type === t)) && (!q || (x.title + " " + (x.sub || "") + " " + (x.body || "")).includes(q)));
 }
 function renderLibrary() {
   const n = S.lib.length, withBody = S.lib.filter(x => x.body && x.body.trim()).length;
   $("#libTotal").textContent = n.toLocaleString();
   $("#libBody").textContent = n ? `· 본문 포함 ${withBody.toLocaleString()}건` : "";
   $("#tabCount").textContent = n ? n.toLocaleString() : "";
+  const oc = outletCounts();
+  $("#outletBar").replaceChildren(...outlets().map(o => { const s = el("span", null, outletName(o)); s.append(el("b", null, String(oc.get(o)))); return s; }));
+  $("#outletList").replaceChildren(...outlets().filter(Boolean).map(o => { const x = el("option"); x.value = o; return x; }));
   const tc = typeCounts();
   $("#typeBar").replaceChildren(...[...tc].sort((a, b) => b[1] - a[1]).map(([t, c]) => { const s = el("span", null, t); s.append(el("b", null, String(c))); return s; }));
 
@@ -919,7 +1019,16 @@ function renderLibrary() {
   $("#exportBtn").title = downloadsFn ? "" : "이 화면에서는 파일로 내려받을 수 없습니다";
   ["#guide", "#rules", "#banned"].forEach(q => { $(q).readOnly = !!db && !canWrite; });
 
+  const qo = $("#qOutlet");
+  if (S.qOutlet !== ALL && !oc.has(S.qOutlet)) S.qOutlet = ALL;
+  opt(qo, outlets().map(o => [o, `${outletName(o)} ${oc.get(o)}`]), [ALL, "전체 매체"]);
+  qo.value = S.qOutlet;
   const list = filtered();
+  const unassigned = list.filter(x => !x.outlet).length;
+  $("#assignBox").hidden = !(writable && unassigned && S.qOutlet === "");
+  $("#assignText").textContent = `매체 미지정 ${unassigned.toLocaleString()}건을`;
+  $("#assignBtn").disabled = !writable;
+  renderGuideSelect(); renderStyleControls();
   const qTypeSel = $("#qType"), cur = S.qType;
   opt(qTypeSel, [...tc.keys()].map(t => [t, `${t} ${tc.get(t)}`]), ["", "전체 유형"]);
   qTypeSel.value = tc.has(cur) ? cur : ""; if (!tc.has(cur)) S.qType = "";
@@ -939,8 +1048,8 @@ function renderLibrary() {
   renderLearnState();
 }
 function exEl(x) {
-  const li = el("li", "ex");
-  li.append(el("span", "ex-meta", [x.date, x.type || "미분류"].filter(Boolean).join(" · ")));
+  const li = el("li", "exrow");
+  li.append(el("span", "ex-meta", [outletName(x.outlet), x.date, x.type || "미분류"].filter(Boolean).join(" · ")));
   li.append(el("span", "ex-title", titleLine(x)));
   if (x.sub) li.append(el("span", "ex-sub", x.sub));
   const acts = el("div", "ex-acts");
@@ -956,14 +1065,38 @@ function exEl(x) {
   if (x.body && S.openEx.has(x.id)) li.append(el("p", "ex-body", x.body));
   return li;
 }
+function renderGuideSelect() {
+  const sel = $("#guideOutlet"), os = outlets();
+  if (S.guideOutlet !== ALL && !os.includes(S.guideOutlet)) S.guideOutlet = ALL;
+  const oc = outletCounts();
+  opt(sel, os.map(o => [o, `${outletName(o)} (${oc.get(o)}건)${guideFor(o).trim() ? " · 가이드 있음" : ""}`]), [ALL, "매체 구분 없이 전체"]);
+  sel.value = S.guideOutlet;
+  $("#analyze").textContent = `${outletName(S.guideOutlet)} 제목 스타일 분석`;
+}
+function renderStyleControls() {
+  const os = outlets(), oc = outletCounts(), b = effectiveBase();
+  opt($("#base"), os.map(o => [o, `${outletName(o)} (${oc.get(o)}건)`]), [ALL, "매체 구분 없이 전체"]);
+  $("#base").value = b;
+  const box = $("#compareChips"), cmp = effectiveCompare(), named = os.filter(o => o && o !== b);
+  box.replaceChildren(...named.map(o => {
+    const lab = el("label"), cb = el("input"); cb.type = "checkbox"; cb.value = o; cb.checked = cmp.includes(o);
+    cb.disabled = b === ALL || (!cb.checked && cmp.length >= 3);
+    cb.onchange = () => { S.compare = cb.checked ? [...effectiveCompare(), o] : effectiveCompare().filter(x => x !== o); persistLocal(); renderStyleControls(); renderLearnState(); };
+    lab.append(cb, el("span", null, o)); return lab;
+  }));
+  $("#styleHint").textContent = !named.length ? "학습 자료에 매체를 둘 이상 넣으면 다른 매체 스타일도 함께 추천합니다."
+    : b === ALL ? "기준 매체를 고르면 다른 매체 스타일도 고를 수 있습니다." : `기준 ${outletName(b)} 5개${cmp.length ? ` + ${cmp.join("·")} 각 2개` : ""}를 뽑습니다.`;
+}
 function renderLearnState() {
   const p = $("#learnState"), n = S.lib.length;
   p.replaceChildren();
   if (S.libState === "none") { p.textContent = "학습 자료 없이 뽑습니다 (로그인 필요)."; return; }
   if (S.libState === "loading") { p.textContent = "학습 자료 불러오는 중…"; return; }
   if (!n) { p.append("학습 자료가 아직 없습니다. "); p.append(btn("과거 피플면 넣으러 가기", () => showTab("library"), "btn-link")); return; }
-  p.append("과거 피플면 "); p.append(el("b", null, n.toLocaleString() + "건")); p.append("을 참고합니다");
-  p.append(S.cfg.guide.trim() ? " · 스타일 가이드 적용" : " · 스타일 가이드 없음");
+  const b = effectiveBase(), cmp = effectiveCompare();
+  p.append(`기준 ${outletName(b)} `); p.append(el("b", null, pool(b).length.toLocaleString() + "건"));
+  p.append(guideFor(b).trim() ? " · 가이드 있음" : " · 가이드 없음");
+  if (cmp.length) p.append(" / 비교 " + cmp.map(o => `${o} ${pool(o).length}건${guideFor(o).trim() ? "" : "(가이드 없음)"}`).join(", "));
   p.append(". ");
   p.append(btn("학습 자료 보기", () => showTab("library"), "btn-link"));
 }
@@ -972,29 +1105,30 @@ function renderLearnState() {
 const tokCache = new Map();
 function tokens(text) { const set = new Set(); for (const m of String(text).slice(0, 4000).matchAll(WORD)) { const s = stem(m[0]); if (s.length >= 2 && !/^\d+$/.test(s)) set.add(s); } return set; }
 function exTokens(x) { const k = x.id + ":" + x.addedAt; let t = tokCache.get(k); if (!t) { t = tokens(x.title + " " + (x.sub || "") + " " + (x.body || "")); tokCache.set(k, t); } return t; }
-function ranked(article) {
-  const N = S.lib.length; if (!N) return [];
+function ranked(article, items) {
+  const N = items.length; if (!N) return [];
   const df = new Map();
-  for (const x of S.lib) for (const t of exTokens(x)) df.set(t, (df.get(t) || 0) + 1);
+  for (const x of items) for (const t of exTokens(x)) df.set(t, (df.get(t) || 0) + 1);
   const q = tokens(article), type = S.artType;
-  return S.lib.map(x => {
+  return items.map(x => {
     let sc = 0; const et = exTokens(x);
     for (const t of q) if (et.has(t)) sc += Math.log(1 + N / df.get(t));
     if (type !== "auto" && x.type === type) sc += 25;
     return { x, sc };
   }).sort((a, b) => b.sc - a.sc).map(r => r.x);
 }
-function libraryBlock(article, headLimit, pairLimit) {
-  const parts = [];
-  if (S.cfg.guide.trim()) parts.push("[이 신문 피플면 제목 스타일 가이드: 반드시 따른다]", S.cfg.guide.trim().slice(0, 6000), "");
-  const r = ranked(article);
+function libraryBlock(article, headLimit, pairLimit, outlet, budget) {
+  const parts = [], name = outlet === ALL ? "이 신문" : outletName(outlet);
+  const g = guideFor(outlet).trim();
+  if (g) parts.push(`[${name} 피플면 제목 스타일 가이드: 반드시 따른다]`, g.slice(0, 6000), "");
+  const r = ranked(article, pool(outlet));
   if (!r.length) return { text: parts.join("\n"), used: [] };
-  let budget = 30000; const heads = [];
+  budget = budget || 30000; const heads = [];
   for (const x of r.slice(0, headLimit)) {
     const line = `- ${titleLine(x)}${x.sub ? ` (부제: ${x.sub})` : ""}${x.type ? ` [${x.type}]` : ""}`;
     budget -= line.length; if (budget < 0) break; heads.push(line);
   }
-  parts.push("[이 신문이 실제로 단 피플면 제목들. 이 기사와 가까운 순. 말투·길이·구조를 따르되 표현을 그대로 베끼지 않는다]", ...heads, "");
+  parts.push(`[${name}가 실제로 단 피플면 제목들. 이 기사와 가까운 순. 말투·길이·구조를 따르되 표현을 그대로 베끼지 않는다]`, ...heads, "");
   const pairs = r.filter(x => x.body && x.body.trim().length > 100).slice(0, pairLimit);
   pairs.forEach((x, i) => {
     parts.push(`[기사-제목 짝 예시 ${i + 1}${x.type ? ` · ${x.type}` : ""}]`, "기사: " + x.body.trim().slice(0, 1500), "제목: " + titleLine(x), ...(x.sub ? ["부제: " + x.sub] : []), "");
@@ -1035,7 +1169,36 @@ function conditions() {
 }
 const JSON_SHAPE = `JSON으로만 답한다. 형식:
 {"candidates":[{"lines":["1행","2행"],"sub":"부제","tone":"담백|감성|따옴표형","point":"이 후보가 무엇을 앞세웠는지 한 줄"}]}`;
+const JSON_SHAPE_MULTI = `JSON으로만 답한다. 형식:
+{"styles":[{"outlet":"매체 이름","note":"이 매체 피플면 제목의 특징 한 줄(다른 매체와 다른 점)"}],
+ "candidates":[{"outlet":"매체 이름","lines":["1행","2행"],"sub":"부제","tone":"담백|감성|따옴표형","point":"이 후보가 무엇을 앞세웠고 그 매체 스타일이 어디에 드러나는지 한 줄"}]}`;
+function styleSections(article, base, cmp) {
+  const parts = [], used = [];
+  const add = (o, role, heads, pairs, budget) => {
+    const lib = libraryBlock(article, heads, pairs, o, budget);
+    if (o === base) used.push(...lib.used);
+    parts.push(`■ ${role}: ${outletName(o)}`, lib.text || "(이 매체 자료 없음)", "");
+  };
+  add(base, "기준 매체", 150, 2, cmp.length ? 20000 : 30000);
+  cmp.forEach(o => add(o, "비교 매체", 60, 1, 7000));
+  return { text: parts.join("\n"), used };
+}
 const typeNote = () => S.artType === "auto" ? "" : `이 기사의 유형: ${S.artType}`;
+function buildMultiPrompt(article, base, cmp, sec) {
+  const nBase = 5;
+  return [
+    "너는 신문 편집기자의 피플면(인물 기사) 제목 작업을 돕는다. 아래 기사로 매체별 스타일을 살린 제목 후보를 만든다.",
+    `- 기준 매체 ${outletName(base)} 스타일로 ${nBase}개. 후보끼리 앞세우는 사실이나 각도가 겹치지 않게 한다.`,
+    ...cmp.map(o => `- ${o} 스타일로 2개.`),
+    "- 각 후보의 outlet에는 위 매체 이름을 그대로 쓴다. 매체마다 아래 그 매체의 가이드와 실제 제목을 따른다. 매체끼리 말투·구조 차이가 드러나게 한다.",
+    "- styles에는 위 매체마다 한 줄씩, 그 매체 피플면 제목이 다른 매체와 어떻게 다른지 자료에서 확인되는 것만 쓴다.",
+    "- 지면 조건은 매체와 상관없이 모든 후보에 똑같이 적용한다.", typeNote(),
+    "", conditions(), "", sec.text,
+    "[톤]", TONE_TEXT[S.tone] || TONE_TEXT.mix,
+    "", "[이번 기사]", article.slice(0, 14000),
+    "", JSON_SHAPE_MULTI,
+  ].join("\n");
+}
 function buildPrompt(article, lib) {
   return [
     "너는 신문 편집기자의 피플면(인물 기사) 제목 작업을 돕는다. 아래 기사로 제목 후보 6개를 만든다.",
@@ -1049,19 +1212,21 @@ function buildPrompt(article, lib) {
 function buildVaryPrompt(article, c, lib) {
   return [
     "너는 신문 편집기자의 피플면(인물 기사) 제목 작업을 돕는다.",
-    "편집기자가 아래 후보의 방향을 골랐다. 같은 각도를 유지하면서 표현을 바꾼 변주 3개를 만든다.", typeNote(),
+    "편집기자가 아래 후보의 방향을 골랐다. 같은 각도를 유지하면서 표현을 바꾼 변주 3개를 만든다.",
+    c.outlet && c.outlet !== ALL ? `이 후보는 ${c.outlet} 스타일이다. 변주도 ${c.outlet} 가이드와 실제 제목을 따른다.` : "", typeNote(),
     "", "[고른 후보]", c.lines.join(" / ") + (c.sub ? `\n부제: ${c.sub}` : ""),
     "", conditions(), "", lib.text,
     "[이번 기사]", article.slice(0, 14000),
     "", JSON_SHAPE,
   ].join("\n");
 }
-function clean(out, origin) {
+function clean(out, origin, allowed, fallback) {
   const arr = Array.isArray(out) ? out : out && Array.isArray(out.candidates) ? out.candidates : [];
   return arr.filter(c => c && Array.isArray(c.lines) && c.lines.some(l => String(l).trim()))
     .map(c => ({
       id: uid(), lines: c.lines.map(l => String(l)).slice(0, 4), sub: String(c.sub || ""),
       tone: ["담백", "감성", "따옴표형"].includes(c.tone) ? c.tone : "후보", point: String(c.point || ""), origin,
+      outlet: allowed && allowed.includes(String(c.outlet || "").trim()) ? String(c.outlet).trim() : fallback,
     }));
 }
 const GONE = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
@@ -1096,12 +1261,23 @@ function showUsed(used) {
 async function generate() {
   const art = articleText(); if (!art || !sampleFn) return;
   ctl = new AbortController(); busy(true); status("제목 후보를 뽑는 중입니다. 30초쯤 걸릴 수 있습니다.");
-  const lib = libraryBlock(art, 250, 3);
+  const base = effectiveBase(), cmp = base === ALL ? [] : effectiveCompare();
   try {
-    const out = await sampleFn.json(buildPrompt(art, lib), { signal: ctl.signal, cache: false });
-    const list = clean(out);
+    let list, used, notes = [];
+    if (base === ALL || !cmp.length) {
+      const lib = libraryBlock(art, 250, 3, base);
+      const out = await sampleFn.json(buildPrompt(art, lib), { signal: ctl.signal, cache: false });
+      list = clean(out, undefined, null, base); used = lib.used;
+    } else {
+      const sec = styleSections(art, base, cmp), names = [base, ...cmp];
+      const out = await sampleFn.json(buildMultiPrompt(art, base, cmp, sec), { signal: ctl.signal, cache: false });
+      list = clean(out, undefined, names, base); used = sec.used;
+      list.sort((a, b) => names.indexOf(a.outlet) - names.indexOf(b.outlet));
+      notes = (out && Array.isArray(out.styles) ? out.styles : []).filter(x => x && names.includes(String(x.outlet || "").trim()) && x.note)
+        .map(x => ({ outlet: String(x.outlet).trim(), note: String(x.note) }));
+    }
     if (!list.length) throw { code: "invalid_json" };
-    S.cands = list; S.showingExample = false; renderCands(); showUsed(lib.used);
+    S.cands = list; S.showingExample = false; S.styleNotes = notes; renderCands(); showUsed(used);
     status(`후보 ${list.length}개를 뽑았습니다. 다시 누르면 새로 뽑습니다.`);
     $("#gen").textContent = "다시 뽑기";
   } catch (e) { status(errCopy(e), e && e.code !== "cancelled"); }
@@ -1111,8 +1287,9 @@ async function vary(c) {
   const art = articleText(); if (!art || !sampleFn) return;
   ctl = new AbortController(); busy(true); status("고른 방향으로 변주를 만드는 중입니다.");
   try {
-    const out = await sampleFn.json(buildVaryPrompt(art, c, libraryBlock(art, 80, 2)), { signal: ctl.signal, cache: false });
-    const list = clean(out, "변주");
+    const o = c.outlet || effectiveBase();
+    const out = await sampleFn.json(buildVaryPrompt(art, c, libraryBlock(art, 80, 2, o)), { signal: ctl.signal, cache: false });
+    const list = clean(out, "변주", null, o);
     if (!list.length) throw { code: "invalid_json" };
     const i = S.cands.indexOf(c);
     S.cands.splice(i < 0 ? S.cands.length : i + 1, 0, ...list);
@@ -1121,26 +1298,27 @@ async function vary(c) {
   finally { ctl = null; busy(false); }
 }
 async function analyze() {
-  if (!sampleFn || !S.lib.length || analyzing) return;
+  const o = S.guideOutlet, items = pool(o);
+  if (!sampleFn || !items.length || analyzing) return;
   const gs = $("#guideStatus"); gs.classList.remove("err");
-  const sorted = [...S.lib].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || b.addedAt - a.addedAt);
+  const sorted = [...items].sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")) || b.addedAt - a.addedAt);
   let budget = 60000; const lines = [];
   for (const x of sorted) { const l = `- ${x.type ? `[${x.type}] ` : ""}${titleLine(x)}${x.sub ? ` (부제: ${x.sub})` : ""}`; budget -= l.length; if (budget < 0) break; lines.push(l); }
   const prompt = [
-    `아래는 한 신문 피플면(인물 기사)에 실제로 실린 제목 ${lines.length}개다.`,
-    "이 신문 피플면 제목의 스타일 가이드를 써라. 편집기자가 새 제목을 달 때 그대로 따를 수 있도록 구체적으로 쓴다.",
+    o === ALL ? `아래는 피플면(인물 기사)에 실제로 실린 제목 ${lines.length}개다.` : `아래는 ${outletName(o)} 피플면(인물 기사)에 실제로 실린 제목 ${lines.length}개다.`,
+    "이 매체 피플면 제목의 스타일 가이드를 써라. 편집기자가 새 제목을 달 때 그대로 따를 수 있도록 구체적으로 쓴다.",
     "항목: 1) 행 구성과 한 행 길이 2) 이름·나이·직함 표기 3) 따옴표 제목을 쓰는 경우와 형식 4) 자주 쓰는 어미와 문장 구조 5) 유형별(부고·수상·은퇴 등) 패턴 6) 쓰지 않는 표현.",
     "각 항목은 짧은 불릿(-)으로 쓰고, 실제 제목을 예로 1~2개 인용한다. 자료에서 확인되지 않는 규칙은 지어내지 않는다. 마크다운 제목(#)이나 굵은 글씨 없이 일반 텍스트로, 전체 1500자 이내.",
     "", "[제목 목록]", ...lines,
   ].join("\n");
   analyzing = true; actl = new AbortController();
   $("#analyze").disabled = true; $("#stopAnalyze").hidden = false;
-  const before = S.cfg.guide; const ta = $("#guide");
+  const before = guideFor(o); const ta = $("#guide");
   gs.textContent = `제목 ${lines.length}개를 읽고 정리하는 중입니다. 1분쯤 걸릴 수 있습니다.`;
   try {
     const { text } = await sampleFn(prompt, { signal: actl.signal, cache: false, onText: ({ text }) => { ta.value = text; } });
-    S.cfg.guide = text.trim(); S.cfg.guideAt = Date.now(); saveCfg();
-    gs.textContent = "스타일 가이드를 저장했습니다. 다음 후보부터 적용됩니다.";
+    setGuide(o, text.trim(), Date.now()); saveCfg();
+    gs.textContent = `${outletName(o)} 스타일 가이드를 저장했습니다. 다음 후보부터 적용됩니다.`;
   } catch (e) {
     ta.value = before;
     if (e && e.code !== "cancelled") { gs.classList.add("err"); gs.textContent = errCopy(e); } else gs.textContent = "멈췄습니다. 이전 가이드를 그대로 둡니다.";
@@ -1181,7 +1359,11 @@ function bind() {
   ["#per", "#subPer"].forEach(q => $(q).addEventListener("input", () => { if ($(q).value !== "") onSet(); }));
   $("#rules").addEventListener("input", e => { S.cfg.rules = e.target.value; saveCfg(); });
   $("#banned").addEventListener("input", e => { S.cfg.banned = e.target.value; saveCfg(); renderWork(); });
-  $("#guide").addEventListener("input", e => { if (analyzing) return; S.cfg.guide = e.target.value; saveCfg(); renderLearnState(); });
+  $("#guide").addEventListener("input", e => { if (analyzing) return; setGuide(S.guideOutlet, e.target.value); saveCfg(); renderLearnState(); });
+  $("#guideOutlet").addEventListener("change", e => { S.guideOutlet = e.target.value; $("#guideStatus").textContent = ""; fillCfgControls(true); renderLibrary(); });
+  $("#qOutlet").addEventListener("change", e => { S.qOutlet = e.target.value; S.show = 50; renderLibrary(); });
+  $("#assignBtn").onclick = assignOutlet;
+  $("#base").addEventListener("change", e => { S.base = e.target.value; persistLocal(); renderStyleControls(); renderLearnState(); });
   $("#artType").addEventListener("change", e => { S.artType = e.target.value; });
 
   const art = $("#article");
