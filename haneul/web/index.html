@@ -333,6 +333,14 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
                 <p class="hint">엑셀에서 표째로 복사해 붙여도 됩니다. 첫 줄 머리글을 <b>제목, 부제, 유형, 날짜, 본문</b>으로 맞춰 주세요.</p>
               </div>
             </details>
+            <details class="fmt" id="aiBox">
+              <summary>다른 AI로 기사 정리시키기</summary>
+              <div class="inner">
+                <p class="hint">제미나이·ChatGPT 등에 아래 지시문을 먼저 붙여 넣고, 이어서 과거 기사(텍스트·PDF·스캔 이미지)를 넘기세요. 받은 결과를 그대로 위 칸에 붙여 넣으면 됩니다. 옮겨 적다 틀린 곳이 있을 수 있으니 몇 건은 원문과 맞춰 보세요.</p>
+                <pre id="aiPrompt"></pre>
+                <div class="go"><button class="btn-line" id="copyPrompt" type="button">지시문 복사</button></div>
+              </div>
+            </details>
             <div class="go"><button class="btn-line" id="parseBulk" type="button">인식하기</button></div>
           </div>
 
@@ -383,6 +391,13 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
           </div>
           <p class="hint">칸 설정·스타일 가이드·편집 규칙은 이 툴을 여는 사람 모두에게 같이 적용됩니다.</p>
         </section>
+
+        <section class="box" aria-label="내보내기">
+          <h2>내보내기 · 옮기기</h2>
+          <p class="hint">학습 자료 전부와 스타일 가이드·편집 규칙·칸 설정을 JSON 파일 하나로 내려받습니다. 웹판과 exe판 어느 쪽에서든 ‘자료 넣기 → 파일’로 올리면 그대로 옮겨집니다. 백업용으로도 씁니다.</p>
+          <div class="go"><button class="btn-line" id="exportBtn" type="button">학습 자료 내보내기</button></div>
+          <p class="status" id="exportStatus" role="status" aria-live="polite"></p>
+        </section>
       </div>
 
       <section class="box" aria-label="자료 목록">
@@ -403,6 +418,25 @@ pre { margin: 0; font-family: var(--f-num); font-size: 12.5px; line-height: 1.6;
 </div>
 
 <script>
+const AI_PROMPT = `너는 신문 피플면 기사를 정리하는 담당자다. 내가 이어서 붙여 넣거나 첨부하는 과거 피플면 기사를 하나도 빠짐없이 아래 형식으로 옮겨 적어라.
+
+[형식]
+제목: 지면에 실린 제목. 제목이 여러 행이면 행 사이에 " / "를 넣는다
+부제: 부제. 없으면 이 줄을 통째로 뺀다
+유형: 부고, 수상, 은퇴, 취임·인사, 인터뷰, 선행·기부, 기타 중 하나
+날짜: 게재일 YYYY-MM-DD. 알 수 없으면 이 줄을 통째로 뺀다
+본문:
+기사 본문 전체
+===
+
+[규칙]
+1. 기사 한 건이 한 덩어리다. 덩어리와 덩어리 사이에는 === 한 줄만 넣는다.
+2. 항목 이름(제목:, 부제:, 유형:, 날짜:, 본문:)과 순서를 바꾸지 않는다. 본문은 늘 맨 마지막이다.
+3. 제목·부제·본문은 원문 그대로 옮긴다. 요약하거나 다듬거나 맞춤법을 고치지 않는다. 문장을 새로 지어내지 않는다.
+4. 본문에서 사진 설명, 기자 이름과 이메일, 저작권 문구, 광고, 관련 기사 목록은 뺀다.
+5. 제목을 확인할 수 없는 기사는 제목을 지어내지 말고, 맨 끝에 "제목 확인 필요" 아래에 첫 문장만 적는다.
+6. 기사가 많아 한 번에 다 못 쓰면 기사 단위로 끊고 마지막 줄에 "계속"이라고 적는다. 내가 "계속"이라고 하면 이어서 쓴다.
+7. 형식 밖의 설명, 인사말, 마크다운 기호(#, **, 코드 블록)를 붙이지 않는다.`;
 const TYPES = ["부고", "수상", "은퇴", "취임·인사", "인터뷰", "선행·기부", "기타"];
 const EXAMPLE_ARTICLE = `[예시 기사 · 실제 인물이 아닙니다]
 서울 ○○시장 골목 끝에서 34년 동안 구두를 고쳐온 박정순(71)씨가 이달 말 가게 문을 닫는다.
@@ -445,7 +479,7 @@ const S = {
   manual: { id: "manual", lines: ["", ""], sub: "", tone: "직접 쓰기", point: "" },
   artType: "auto",
   lib: [], libState: "loading",
-  pending: null, mode: "paste", q: "", qType: "", show: 50, openEx: new Set(), confirmDel: null, wipeAsk: false, busyImport: false,
+  pending: null, pendingCfg: null, useCfg: false, mode: "paste", q: "", qType: "", show: 50, openEx: new Set(), confirmDel: null, wipeAsk: false, busyImport: false,
 };
 const persistLocal = () => store.set(KEY, { cfg: S.cfg, tone: S.tone, saved: S.saved });
 
@@ -623,15 +657,18 @@ function renderWork() { renderManual(); renderCands(); renderSaved(); renderSpec
 
 /* ---- shared config (db: config/main) ---- */
 let db = null, canWrite = true, cfgTimer = null, cfgChain = Promise.resolve();
+// 내가 바꾼 설정이 저장되기 전에 들어온 원격 스냅숏이 그 변경을 덮지 않도록, 보낸 번호와 끝난 번호를 센다.
+let cfgSeq = 0, cfgDone = 0;
 function saveCfg() {
   persistLocal();
   if (!db || !canWrite) return;
+  const my = ++cfgSeq;
   clearTimeout(cfgTimer);
   cfgTimer = setTimeout(() => {
     const body = { ...S.cfg };
     cfgChain = cfgChain.then(() => db.doc("config/main").set(body)).catch(e => {
       if (e && e.code === "invalid_argument") { canWrite = false; renderLibrary(); }
-    });
+    }).then(() => { cfgDone = Math.max(cfgDone, my); });
   }, 700);
 }
 function fillCfgControls(force) {
@@ -645,6 +682,7 @@ function fillCfgControls(force) {
   $("#guideAt").textContent = s.guideAt ? "마지막 분석 " + new Date(s.guideAt).toLocaleDateString("ko-KR") : "";
 }
 function applyRemoteCfg(d) {
+  if (cfgDone < cfgSeq) return;
   const next = Object.assign({}, CFG_DEFAULT, d);
   const changed = JSON.stringify(next) !== JSON.stringify(S.cfg);
   if (!changed) return;
@@ -712,6 +750,42 @@ function parseAny(txt, name) {
   if (lower.endsWith(".tsv")) return parseDelimited(txt, "\t");
   return parseBlocks(txt);
 }
+const CFG_KEYS = ["rows", "per", "sub", "subPer", "space", "half", "rules", "banned", "guide", "guideAt"];
+function parseCfg(txt) {
+  try {
+    const j = JSON.parse(txt.replace(/^\uFEFF/, ""));
+    const c = j && (j.config || (j.collections && j.collections.config && j.collections.config.main));
+    if (!c || typeof c !== "object") return null;
+    const out = {};
+    for (const k of CFG_KEYS) if (c[k] !== undefined) out[k] = c[k];
+    return Object.keys(out).length ? out : null;
+  } catch { return null; }
+}
+function applyCfg(c) {
+  const next = Object.assign({}, S.cfg);
+  for (const k of CFG_KEYS) if (c[k] !== undefined && typeof c[k] === typeof CFG_DEFAULT[k]) next[k] = c[k];
+  S.cfg = next; saveCfg(); fillCfgControls(true); renderWork();
+}
+let downloadsFn = null;
+async function exportAll() {
+  const st = $("#exportStatus"); st.classList.remove("err");
+  if (!S.lib.length && !S.cfg.guide.trim()) { st.textContent = "내보낼 자료가 아직 없습니다."; return; }
+  const body = {
+    format: "haneul-export", version: 1, exportedAt: new Date().toISOString(), count: S.lib.length,
+    config: Object.fromEntries(CFG_KEYS.map(k => [k, S.cfg[k]])),
+    examples: S.lib.map(({ title, sub, type, date, body }) => ({ title, sub: sub || "", type: type || "", date: date || "", body: body || "" })),
+  };
+  const d = new Date(), pad = n => String(n).padStart(2, "0");
+  const name = `haneul_export_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}.json`;
+  try {
+    await downloadsFn.save({ filename: name, data: JSON.stringify(body, null, 1) });
+    st.textContent = `${S.lib.length.toLocaleString()}건을 ${name}로 내보냈습니다.`;
+  } catch (e) {
+    if (e && e.code === "declined") { st.textContent = "내보내기를 취소했습니다."; return; }
+    st.classList.add("err");
+    st.textContent = e && e.code === "rate_limited" ? "저장 창이 이미 떠 있습니다. 그 창을 먼저 닫아 주세요." : "이 화면에서는 파일로 내려받을 수 없습니다.";
+  }
+}
 async function readFile(file) {
   const buf = await file.arrayBuffer();
   let t = new TextDecoder("utf-8").decode(buf);
@@ -744,11 +818,20 @@ function renderPreview() {
     if (p.ok.length > 5) ol.append(el("li", "hint", `외 ${p.ok.length - 5}건`));
     wrap.append(ol);
   }
+  if (S.pendingCfg) {
+    const lab = el("label", "inline");
+    const cb = el("input"); cb.type = "checkbox"; cb.id = "useCfg"; cb.checked = S.useCfg;
+    cb.onchange = () => { S.useCfg = cb.checked; renderPreview(); };
+    lab.append(cb, " 이 파일의 스타일 가이드·편집 규칙·칸 설정으로 바꾸기" + (S.pendingCfg.guide ? "" : " (가이드 없음)"));
+    wrap.append(lab);
+  }
   const bar = el("div", "progress"); bar.hidden = true; bar.append(el("i")); wrap.append(bar);
   const go = el("div", "go");
-  const save = btn(`${p.ok.length}건 저장`, () => importItems(p.ok, bar), "btn-main");
-  save.disabled = !p.ok.length || !db || !canWrite || S.busyImport;
-  go.append(save, btn("취소", () => { S.pending = null; renderPreview(); }));
+  const withCfg = !!(S.pendingCfg && S.useCfg);
+  const label = p.ok.length ? `${p.ok.length}건 저장` + (withCfg ? " + 설정 바꾸기" : "") : "설정만 바꾸기";
+  const save = btn(label, () => importItems(p.ok, bar), "btn-main");
+  save.disabled = (!p.ok.length && !withCfg) || !db || !canWrite || S.busyImport;
+  go.append(save, btn("취소", () => { S.pending = null; S.pendingCfg = null; renderPreview(); }));
   wrap.append(go);
   box.replaceChildren(wrap);
 }
@@ -775,15 +858,17 @@ async function importItems(items, bar) {
       st.textContent = `저장 중 ${done} / ${items.length}`;
       const i = $("#parsePreview .progress i"); if (i) i.style.width = (done / items.length * 100) + "%";
     }
-    st.textContent = `${done}건을 학습 자료에 넣었습니다.`;
-    S.pending = null; $("#bulk").value = ""; $("#file").value = ""; countBulk();
+    let msg = `${done}건을 학습 자료에 넣었습니다.`;
+    if (S.pendingCfg && S.useCfg) { applyCfg(S.pendingCfg); msg += " 스타일 가이드·편집 규칙·칸 설정도 바꿨습니다."; }
+    st.textContent = msg;
+    S.pending = null; S.pendingCfg = null; $("#bulk").value = ""; $("#file").value = ""; countBulk();
   } catch (e) {
     st.classList.add("err");
     const code = e && e.code;
     st.textContent = `${done}건까지 저장하고 멈췄습니다. ` + (code === "quota_exceeded" ? "저장 공간이 가득 찼습니다. 오래된 자료를 지운 뒤 다시 넣어 주세요."
       : code === "invalid_argument" ? "이 화면에서는 자료를 넣을 권한이 없습니다." : "연결이 끊겼습니다. ‘인식하기’를 다시 누르면 남은 것만 넣습니다.");
     if (code === "invalid_argument") canWrite = false;
-    S.pending = null;
+    S.pending = null; S.pendingCfg = null;
   } finally { S.busyImport = false; renderPreview(); renderLibrary(); }
 }
 async function saveOne() {
@@ -830,6 +915,8 @@ function renderLibrary() {
   const writable = !!db && canWrite && !S.busyImport;
   ["#parseBulk", "#saveOne", "#analyze"].forEach(q => { $(q).disabled = q === "#analyze" ? (!sampleFn || !n || analyzing) : !writable; });
   $("#file").disabled = !writable;
+  $("#exportBtn").disabled = !downloadsFn || S.libState !== "ready";
+  $("#exportBtn").title = downloadsFn ? "" : "이 화면에서는 파일로 내려받을 수 없습니다";
   ["#guide", "#rules", "#banned"].forEach(q => { $(q).readOnly = !!db && !canWrite; });
 
   const list = filtered();
@@ -1112,17 +1199,21 @@ function bind() {
   $("#parseBulk").onclick = () => {
     const v = $("#bulk").value;
     if (!v.trim()) { $("#importStatus").textContent = "붙여 넣은 내용이 없습니다."; return; }
-    $("#importStatus").textContent = ""; stage(parseAny(v, ""), "paste");
+    $("#importStatus").textContent = ""; S.pendingCfg = parseCfg(v); S.useCfg = !!S.pendingCfg && !S.cfg.guide.trim(); stage(parseAny(v, ""), "paste");
   };
   $("#file").addEventListener("change", async e => {
     const files = [...e.target.files]; if (!files.length) return;
     const st = $("#importStatus"); st.classList.remove("err"); st.textContent = "파일을 읽는 중…";
-    const all = [];
-    for (const f of files) { try { all.push(...parseAny(await readFile(f), f.name)); } catch { st.classList.add("err"); st.textContent = `${f.name}을(를) 읽지 못했습니다.`; } }
+    const all = []; S.pendingCfg = null;
+    for (const f of files) { try { const t = await readFile(f); all.push(...parseAny(t, f.name)); const c = parseCfg(t); if (c) S.pendingCfg = c; } catch { st.classList.add("err"); st.textContent = `${f.name}을(를) 읽지 못했습니다.`; } }
     if (!st.classList.contains("err")) st.textContent = `파일 ${files.length}개에서 ${all.length}건을 찾았습니다.`;
+    S.useCfg = !!S.pendingCfg && !S.cfg.guide.trim();
     stage(all, "file");
   });
   $("#saveOne").onclick = saveOne;
+  $("#aiPrompt").textContent = AI_PROMPT;
+  $("#copyPrompt").onclick = e => copy(AI_PROMPT, e.currentTarget);
+  $("#exportBtn").onclick = exportAll;
   $("#q").addEventListener("input", e => { S.q = e.target.value; S.show = 50; renderLibrary(); });
   $("#qType").addEventListener("change", e => { S.qType = e.target.value; S.show = 50; renderLibrary(); });
   $("#analyze").onclick = analyze;
@@ -1143,6 +1234,7 @@ if (window.claude && typeof window.claude.use === "function") {
     sampleFn = s; updateGen(); renderCands(); renderLibrary();
     status(s ? "" : NO_CLAUDE, !s);
   }).catch(() => status(NO_CLAUDE, true));
+  window.claude.use("downloads").then(d => { downloadsFn = d; renderLibrary(); }, () => {});
   Promise.all([window.claude.use("db"), window.claude.use("user").catch(() => null)]).then(async ([d, u]) => {
     if (!d) { S.libState = "none"; renderLibrary(); return; }
     db = d;

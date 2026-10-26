@@ -97,6 +97,18 @@
     profiles: () => Promise.resolve({}),
   };
 
-  const caps = { sample, db, user };
+  // ---- downloads: 일반 브라우저라 바로 내려받기로 넘긴다
+  const downloads = {
+    save: ({ filename, data }) => new Promise(resolve => {
+      const url = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+      const a = document.createElement("a");
+      a.href = url; a.setAttribute("download", filename); a.hidden = true;
+      document.body.append(a); a.click();
+      setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 10000);
+      resolve({ status: "saved" });
+    }),
+  };
+
+  const caps = { sample, db, user, downloads };
   window.claude = Object.freeze({ use: name => Promise.resolve(caps[name] || null) });
 })();
