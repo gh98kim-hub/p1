@@ -69,6 +69,9 @@ textarea { resize: vertical; min-height: 120px; line-height: 1.55 }
 .photo { display: flex; align-items: center; gap: 8px; min-width: 0 }
 .photo img { width: 54px; height: 40px; object-fit: cover; border-radius: 2px; flex: none }
 .photo input[type="text"] { min-width: 0; flex: 1 }
+.crop { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end }
+.crop label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--fg-dim); min-width: 0 }
+.crop input[type="range"] { width: 100%; accent-color: var(--stamp) }
 .file input { position: absolute; width: 1px; height: 1px; opacity: 0 }
 .file:focus-within { outline: 2px solid var(--stamp); outline-offset: 2px }
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
@@ -125,10 +128,14 @@ body.solo .stage { width: min(100%, 1080px) }
 .sub::before { content: "– " }
 .subs { margin-bottom: 10px }
 figure { margin: 2px 0 12px }
-figure img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; filter: grayscale(.15) }
-.art[data-span="3"] figure img, .art[data-span="4"] figure img { aspect-ratio: 16 / 9 }
-.art[data-span="6"] figure img { aspect-ratio: 3 / 1 }
-.art.lead[data-span="6"] figure img { aspect-ratio: 2 / 1 }
+.ph { overflow: hidden; aspect-ratio: 3 / 2; cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none }
+.ph.drag { cursor: grabbing }
+.ph img { display: block; width: 100%; height: 100%; max-width: none; object-fit: cover; filter: grayscale(.15); pointer-events: none }
+.art[data-span="3"] .ph, .art[data-span="4"] .ph { aspect-ratio: 16 / 9 }
+.art[data-span="6"] .ph { aspect-ratio: 3 / 1 }
+.art.lead[data-span="6"] .ph { aspect-ratio: 2 / 1 }
+.ph.orig { aspect-ratio: auto !important }
+.ph.orig img { height: auto }
 figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-top: 5px }
 .body { column-count: var(--c); column-gap: 22px; font-size: calc(14.5px * var(--z, 1)); line-height: calc(23px * var(--z, 1)); text-align: justify; word-break: break-all }
 .body.fill { column-fill: auto; overflow: hidden }
@@ -200,7 +207,7 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
   var uid = function () { return Math.random().toString(36).slice(2, 8); };
 
   function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
-  function art(text) { return { id: uid(), text: text || '', img: '', cap: '' }; }
+  function art(text) { return { id: uid(), text: text || '', img: '', cap: '', px: 50, py: 50, zoom: 1, ratio: 'auto' }; }
 
   function sample() {
     return {
@@ -246,6 +253,12 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
     return { tags: tags, head: head, subs: subs, paras: paras };
   }
 
+  var RATIO = { wide: '21 / 9', normal: '3 / 2', square: '1 / 1', tall: '4 / 5' };
+  function imgStyle(a) {
+    var pos = (+a.px).toFixed(1) + '% ' + (+a.py).toFixed(1) + '%';
+    return 'object-position:' + pos + ';transform-origin:' + pos + ';transform:scale(' + (+a.zoom || 1) + ')';
+  }
+
   function spans(n) {
     return [[], [[6]], [[4, 2]], [[4, 2], [6]], [[4, 2], [3, 3]], [[4, 2], [2, 2, 2]], [[4, 2], [3, 3], [3, 3]], [[4, 2], [2, 2, 2], [3, 3]]][Math.min(n, MAX)];
   }
@@ -253,7 +266,7 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
   /* ---------- 지면 그리기 ---------- */
   function renderPage() {
     var page = $('#page');
-    var arts = S.arts.map(function (a) { var p = parse(a.text); p.img = a.img; p.cap = a.cap; return p; })
+    var arts = S.arts.map(function (a) { var p = parse(a.text); p.img = a.img; p.cap = a.cap; p.id = a.id; p.px = a.px == null ? 50 : a.px; p.py = a.py == null ? 50 : a.py; p.zoom = a.zoom || 1; p.ratio = a.ratio || 'auto'; return p; })
       .filter(function (a) { return a.head || a.paras.length || a.img; }).slice(0, MAX);
     var d = new Date((S.date || today()) + 'T00:00:00');
     if (isNaN(d)) d = new Date();
@@ -276,7 +289,7 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
             '<h2 class="hd"' + (lead ? ' data-max="' + (sp === 6 ? 80 : 64) + '"' : '') + '>' +
             a.tags.map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('') + esc(a.head) + '</h2>' +
             (a.subs.length ? '<div class="subs">' + a.subs.map(function (s) { return '<p class="sub">' + esc(s) + '</p>'; }).join('') + '</div>' : '') +
-            (a.img ? '<figure><img src="' + esc(a.img) + '" alt="">' + (a.cap ? '<figcaption>' + esc(a.cap) + '</figcaption>' : '') + '</figure>' : '') +
+            (a.img ? '<figure><div class="ph' + (a.ratio === 'orig' ? ' orig' : '') + '" data-id="' + a.id + '"' + (RATIO[a.ratio] ? ' style="aspect-ratio:' + RATIO[a.ratio] + '"' : '') + '><img src="' + esc(a.img) + '" alt="" style="' + imgStyle(a) + '"></div>' + (a.cap ? '<figcaption>' + esc(a.cap) + '</figcaption>' : '') + '</figure>' : '') +
             '<div class="body">' + a.paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') + '</div>' +
             '<div class="jump" hidden>▶ ' + (k + 2) + '면에 계속</div></article>';
           k++;
@@ -287,6 +300,7 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
     }
     page.className = 'page' + (S.font === 'gothic' ? ' gothic' : '');
     page.innerHTML = html;
+    page.querySelectorAll('.ph img').forEach(function (im) { if (!im.complete) im.addEventListener('load', fit); });
     fit();
   }
 
@@ -294,6 +308,9 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
   function fit() {
     var page = $('#page'), rows = [].slice.call(page.querySelectorAll('.row'));
     if (!rows.length) return;
+    rows.forEach(function (r) { r.style.height = ''; });
+    page.querySelectorAll('.body').forEach(function (b) { b.style.height = ''; b.classList.remove('fill'); });
+    page.querySelectorAll('.jump').forEach(function (j) { j.hidden = true; });
     page.querySelectorAll('.lead .hd').forEach(function (h) {
       var fs = +h.dataset.max; h.style.fontSize = fs + 'px';
       while (fs > 38 && h.offsetHeight > fs * 1.2 * 2 + 4) { fs -= 2; h.style.fontSize = fs + 'px'; }
@@ -358,7 +375,12 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
         '<div class="photo">' + (a.img
           ? '<img src="' + esc(a.img) + '" alt=""><input type="text" id="c-' + a.id + '" data-f="cap" placeholder="사진 설명" value="' + esc(a.cap) + '"><button class="btn sm" type="button" data-act="rmimg">사진 빼기</button>'
           : '<label class="btn sm file">사진 넣기<input type="file" accept="image/*" id="f-' + a.id + '" data-f="file"></label>') +
-        '</div></section>';
+        '</div>' + (a.img
+          ? '<div class="crop"><label>사진 비율<select id="r-' + a.id + '" data-f="ratio">' +
+            [['auto', '자동'], ['orig', '원본 그대로(안 자름)'], ['wide', '가로로 길게'], ['normal', '보통 3:2'], ['square', '정사각'], ['tall', '세로로 길게']].map(function (o) { return '<option value="' + o[0] + '"' + ((a.ratio || 'auto') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+            '</select></label><label>확대<input type="range" id="z-' + a.id + '" data-f="zoom" min="1" max="3" step="0.05" value="' + (a.zoom || 1) + '"></label></div>' +
+            '<p class="hint">지면의 사진을 끌어서 보이는 위치를 맞춥니다. 두 번 누르면 가운데로 돌아갑니다.</p>'
+          : '') + '</section>';
     }).join('');
     $('#add').disabled = S.arts.length >= MAX;
   }
@@ -381,6 +403,7 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
         c.width = Math.round(im.width * m); c.height = Math.round(im.height * m);
         c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
         S.arts[i].img = c.toDataURL('image/jpeg', .85);
+        S.arts[i].px = 50; S.arts[i].py = 50; S.arts[i].zoom = 1;
         renderEditor(); renderPage(); save();
       };
       im.src = fr.result;
@@ -394,8 +417,8 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
   var list = $('#list');
   list.addEventListener('input', function (e) {
     var i = find(e.target), f = e.target.dataset.f;
-    if (i < 0 || (f !== 'text' && f !== 'cap')) return;
-    S.arts[i][f] = e.target.value; refresh();
+    if (i < 0 || ['text', 'cap', 'ratio', 'zoom'].indexOf(f) < 0) return;
+    S.arts[i][f] = f === 'zoom' ? +e.target.value : e.target.value; refresh();
   });
   list.addEventListener('change', function (e) {
     var i = find(e.target);
@@ -415,6 +438,33 @@ figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-to
       var t = S.arts[i]; S.arts[i] = S.arts[j]; S.arts[j] = t;
     }
     renderEditor(); refresh();
+  });
+
+  /* ---------- 지면에서 사진을 끌어 보이는 위치 조정 ---------- */
+  var pageEl = $('#page'), drag = null;
+  function artById(id) { for (var i = 0; i < S.arts.length; i++) if (S.arts[i].id === id) return S.arts[i]; return null; }
+  pageEl.addEventListener('pointerdown', function (e) {
+    var ph = e.target.closest('.ph'); if (!ph) return;
+    var a = artById(ph.dataset.id), im = ph.querySelector('img'); if (!a || !im.naturalWidth) return;
+    var bw = ph.offsetWidth, bh = ph.offsetHeight, z = +a.zoom || 1;
+    var c = Math.max(bw / im.naturalWidth, bh / im.naturalHeight) * z;
+    drag = { a: a, im: im, ph: ph, x: e.clientX, y: e.clientY, px: a.px == null ? 50 : +a.px, py: a.py == null ? 50 : +a.py,
+      rx: im.naturalWidth * c - bw, ry: im.naturalHeight * c - bh, s: $('#stage').clientWidth / W };
+    ph.setPointerCapture(e.pointerId); ph.classList.add('drag'); e.preventDefault();
+  });
+  pageEl.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var cl = function (v) { return Math.min(100, Math.max(0, v)); }, d = drag;
+    if (d.rx > 1) d.a.px = cl(d.px - (e.clientX - d.x) / d.s / d.rx * 100);
+    if (d.ry > 1) d.a.py = cl(d.py - (e.clientY - d.y) / d.s / d.ry * 100);
+    d.im.style.cssText = imgStyle(d.a);
+  });
+  var endDrag = function () { if (!drag) return; drag.ph.classList.remove('drag'); drag = null; save(); };
+  pageEl.addEventListener('pointerup', endDrag);
+  pageEl.addEventListener('pointercancel', endDrag);
+  pageEl.addEventListener('dblclick', function (e) {
+    var ph = e.target.closest('.ph'), a = ph && artById(ph.dataset.id); if (!a) return;
+    a.px = 50; a.py = 50; ph.querySelector('img').style.cssText = imgStyle(a); save();
   });
 
   /* confirm() 대신: 한 번 누르면 경고로 바뀌고, 다시 누르면 실행 */
