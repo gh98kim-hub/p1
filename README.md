@@ -249,3 +249,9 @@ python -m balje --config samples/sample_config.json --input samples/sample_artic
 pip install pytest
 python -m pytest -q
 ```
+
+## 덤: 억울일보 1면 편집기
+
+`eogul-ilbo/index.html`은 발제 도우미와 별개인 한 장짜리 웹 페이지다. 브라우저로 열어 기사를 붙여넣으면 신문 1면이 짜인다.
+첫 줄은 제목, 바로 아래 짧은 줄은 부제, 나머지는 본문이 된다. 넘치는 본문은 잘리고 '○면에 계속'이 붙는다.
+설치할 것은 없고, [인쇄 · PDF 저장]으로 A4 한 장을 뽑는다(서체는 인터넷에 연결돼 있을 때 내려받는다).

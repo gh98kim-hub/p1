@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!--/HEAD-OPEN-->
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>억울일보 편집기</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Song+Myung&family=Noto+Serif+KR:wght@400;600;900&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">
+<style>
+/* 배치: 왼쪽은 기사 붙여넣는 편집 데스크, 오른쪽은 A4 비율 지면 한 장. 지면은 어느 테마에서도 신문지 그대로 둔다. */
+:root {
+  --desk: #d9dcdd;        /* 지면이 놓이는 책상 */
+  --panel: #f6f7f7;       /* 편집 카드 */
+  --line: #b9bfc1;
+  --fg: #1b1f21;
+  --fg-dim: #5a6367;
+  --stamp: #c3162c;       /* 도장 빨강: 단독 꼬리표, 억울지수, 주 버튼 */
+  --stamp-fg: #ffffff;
+  --paper: #efeeea;       /* 신문지 */
+  --ink: #171717;
+  --ink-dim: #55524d;
+  --f-mast: "Song Myung", "Noto Serif KR", "Nanum Myeongjo", "Batang", serif;
+  --f-serif: "Noto Serif KR", "Nanum Myeongjo", "AppleMyungjo", "Batang", serif;
+  --f-sans: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --desk: #1c2022; --panel: #272c2f; --line: #454d51; --fg: #e9eced; --fg-dim: #a0a9ad; --stamp: #e2475a; --stamp-fg: #1a0306; color-scheme: dark }
+}
+:root[data-theme="dark"] { --desk: #1c2022; --panel: #272c2f; --line: #454d51; --fg: #e9eced; --fg-dim: #a0a9ad; --stamp: #e2475a; --stamp-fg: #1a0306; color-scheme: dark }
+
+* { box-sizing: border-box }
+body {
+  margin: 0; background: var(--desk); color: var(--fg);
+  font: 14px/1.5 var(--f-sans);
+  padding-block: 14px 28px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button, input, textarea, select { font: inherit; color: inherit }
+:focus-visible { outline: 2px solid var(--stamp); outline-offset: 2px }
+
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; max-width: 1400px; margin: 0 auto 14px }
+.top h1 { font: 400 26px/1 var(--f-mast); margin: 0; letter-spacing: .06em }
+.top h1 small { font: 500 13px var(--f-sans); color: var(--fg-dim); letter-spacing: 0; margin-left: 8px }
+.sp { flex: 1 }
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 1px solid var(--line); background: var(--panel); border-radius: 4px;
+  padding: 6px 12px; cursor: pointer; white-space: nowrap;
+}
+.btn:hover { border-color: var(--fg) }
+.btn:disabled { opacity: .4; cursor: default; border-color: var(--line) }
+.btn.main { background: var(--stamp); border-color: var(--stamp); color: var(--stamp-fg); font-weight: 700 }
+.btn.armed { border-color: var(--stamp); color: var(--stamp) }
+.btn.sm { padding: 3px 8px; font-size: 12.5px }
+
+.app { display: grid; grid-template-columns: minmax(300px, 400px) minmax(0, 1fr); gap: 20px; max-width: 1400px; margin: 0 auto; align-items: start }
+.desk { display: flex; flex-direction: column; gap: 12px; min-width: 0 }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 12px; display: flex; flex-direction: column; gap: 8px }
+.card-h { display: flex; align-items: center; gap: 6px }
+.card-h b { font-size: 13px }
+.card.first { border-top: 3px solid var(--stamp) }
+textarea, input[type="text"], input[type="date"], input[type="number"], select {
+  width: 100%; background: var(--desk); border: 1px solid var(--line); border-radius: 3px; padding: 7px 9px;
+}
+textarea { resize: vertical; min-height: 120px; line-height: 1.55 }
+.hint { color: var(--fg-dim); font-size: 12.5px; margin: 0 }
+.photo { display: flex; align-items: center; gap: 8px; min-width: 0 }
+.photo img { width: 54px; height: 40px; object-fit: cover; border-radius: 2px; flex: none }
+.photo input[type="text"] { min-width: 0; flex: 1 }
+.file input { position: absolute; width: 1px; height: 1px; opacity: 0 }
+.file:focus-within { outline: 2px solid var(--stamp); outline-offset: 2px }
+.opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px }
+.opts label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--fg-dim); min-width: 0 }
+.opts .full { grid-column: 1 / -1 }
+.opts input[type="range"] { width: 100%; accent-color: var(--stamp) }
+
+.view { min-width: 0; position: sticky; top: calc(12px + env(safe-area-inset-top, 0px)); display: flex; justify-content: center }
+.stage { position: relative; width: min(100%, calc((100vh - 96px) * 0.7072)); min-width: min(100%, 420px); box-shadow: 0 2px 14px rgba(0, 0, 0, .28); background: var(--paper); overflow: hidden }
+body.solo .desk { display: none }
+body.solo .app { grid-template-columns: minmax(0, 1fr) }
+body.solo .view { position: static }
+body.solo .stage { width: min(100%, 1080px) }
+@media (max-width: 860px) {
+  .app { grid-template-columns: minmax(0, 1fr) }
+  .view { position: static; order: -1 }
+  .stage { width: 100%; min-width: 0 }
+}
+
+/* ---------- 지면 (1080 x 1527 고정, 화면에는 축소해서 보여준다) ---------- */
+.page {
+  position: absolute; left: 0; top: 0; transform-origin: 0 0;
+  width: 1080px; height: 1527px; padding: 34px 40px 36px;
+  background: var(--paper); color: var(--ink);
+  display: flex; flex-direction: column; overflow: hidden;
+  font-family: var(--f-serif);
+}
+.mast { flex: none; padding-bottom: 12px }
+.mast-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 20px }
+.mast-title { font: 400 104px/1 var(--f-mast); letter-spacing: .1em; margin: 0 -.1em 0 0; white-space: nowrap }
+.ear { font: 500 13px/1.5 var(--f-sans); color: var(--ink-dim) }
+.ear.l { justify-self: start; border: 1px solid var(--ink); padding: 7px 12px 8px; color: var(--ink) }
+.ear.l b { display: block; font-size: 11.5px; letter-spacing: .12em; font-weight: 700 }
+.ear.l .pips { color: #b3142a; font-size: 17px; letter-spacing: .08em; line-height: 1.2 }
+.ear.l .lv { font: 900 15px var(--f-serif) }
+.ear.r { justify-self: end; text-align: right }
+.ear.r strong { display: block; color: var(--ink); font: 600 15px var(--f-serif) }
+.mast-rule { margin-top: 12px; border-top: 5px solid var(--ink); border-bottom: 1px solid var(--ink); height: 9px }
+
+.row { flex: none; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); padding: 14px 0 16px; border-top: 1px solid var(--ink); overflow: hidden }
+.mast + .row { border-top: 0; padding-top: 4px }
+.art { position: relative; min-width: 0; padding: 0 18px }
+.art:first-child { padding-left: 0 }
+.art:last-child { padding-right: 0 }
+.art + .art { border-left: 1px solid #8f8c86 }
+.hd { margin: 0 0 10px; font: 900 27px/1.2 var(--f-serif); letter-spacing: -.035em; word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance }
+.page.gothic .hd { font-family: var(--f-sans); letter-spacing: -.05em }
+.art[data-span="3"] .hd { font-size: 32px }
+.art[data-span="6"] .hd { font-size: 40px }
+.art.lead .hd { margin-bottom: 12px }
+.tag { display: inline-block; vertical-align: .16em; margin-right: .3em; padding: .12em .4em .16em; background: #b3142a; color: #fff; font: 700 .5em/1 var(--f-sans); letter-spacing: 0 }
+.sub { margin: 0 0 4px; font: 700 16px/1.4 var(--f-sans); letter-spacing: -.03em; color: #2c2b29; word-break: keep-all }
+.lead .sub { font-size: 19px }
+.sub::before { content: "– " }
+.subs { margin-bottom: 10px }
+figure { margin: 2px 0 12px }
+figure img { display: block; width: 100%; aspect-ratio: 3 / 2; object-fit: cover; filter: grayscale(.15) }
+.art[data-span="3"] figure img, .art[data-span="4"] figure img { aspect-ratio: 16 / 9 }
+.art[data-span="6"] figure img { aspect-ratio: 3 / 1 }
+.art.lead[data-span="6"] figure img { aspect-ratio: 2 / 1 }
+figcaption { font: 400 12px/1.45 var(--f-sans); color: var(--ink-dim); margin-top: 5px }
+.body { column-count: var(--c); column-gap: 22px; font-size: calc(14.5px * var(--z, 1)); line-height: calc(23px * var(--z, 1)); text-align: justify; word-break: break-all }
+.body.fill { column-fill: auto; overflow: hidden }
+.body p { margin: 0; text-indent: 1em }
+.jump { position: absolute; right: 18px; bottom: 0; font: 700 12px/20px var(--f-sans); color: var(--ink-dim) }
+.art:last-child .jump { right: 0 }
+.ad { flex: 1 1 0; min-height: 120px; max-height: 360px; margin-top: 16px; border: 1px solid var(--ink); outline: 1px solid var(--ink); outline-offset: 3px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center; padding: 14px 40px; position: relative }
+.ad p { margin: 0; font: 900 38px/1.25 var(--f-serif); letter-spacing: -.03em; word-break: keep-all; text-wrap: balance }
+.ad small { position: absolute; left: 10px; top: 6px; font: 500 11px var(--f-sans); color: var(--ink-dim); letter-spacing: .2em }
+.empty { flex: 1; display: grid; place-items: center; text-align: center; color: var(--ink-dim); font: 600 26px/1.6 var(--f-serif) }
+
+@media print {
+  @page { size: A4; margin: 0 }
+  body { background: #fff; padding: 0 !important }
+  .top, .desk { display: none !important }
+  .app { display: block; max-width: none }
+  .view { position: static; display: block }
+  .stage { width: 210mm !important; height: 297mm !important; box-shadow: none; min-width: 0 }
+  .page { transform: scale(.7349) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact }
+}
+</style>
+<!--HEAD-CLOSE-->
+</head>
+<body>
+<!--/HEAD-CLOSE-->
+
+<header class="top">
+  <h1>억울일보<small>1면 편집기</small></h1>
+  <span class="sp"></span>
+  <button class="btn" id="solo" type="button">지면만 보기</button>
+  <!--SA--><button class="btn main" id="print" type="button">인쇄 · PDF 저장</button><!--/SA-->
+</header>
+
+<main class="app">
+  <div class="desk">
+    <section class="card">
+      <div class="opts">
+        <label>발행일<input type="date" id="o-date"></label>
+        <label>호수<input type="number" id="o-issue" min="1" step="1"></label>
+        <label class="full">오늘의 억울지수 <span id="o-lvname"></span><input type="range" id="o-lv" min="1" max="5" step="1"></label>
+        <label>제목 서체<select id="o-font"><option value="serif">명조</option><option value="gothic">고딕</option></select></label>
+        <label>하단 광고 문구<input type="text" id="o-ad" placeholder="비우면 광고 없음"></label>
+      </div>
+    </section>
+
+    <div id="list" class="desk"></div>
+
+    <div class="card-h">
+      <button class="btn main" id="add" type="button">기사 추가</button>
+      <span class="sp"></span>
+      <button class="btn" id="sample" type="button">예시 넣기</button>
+      <button class="btn" id="clear" type="button">모두 비우기</button>
+    </div>
+    <p class="hint">기사를 통째로 붙여넣으면 첫 줄은 제목, 바로 아래 짧은 줄은 부제, 나머지는 본문으로 들어갑니다. 제목 앞에 [단독]처럼 쓰면 꼬리표가 붙습니다. 넘치는 본문은 자동으로 잘리고 '○면에 계속'이 붙습니다. 1면에는 7건까지 실립니다.</p>
+  </div>
+
+  <div class="view">
+    <div class="stage" id="stage"><div class="page" id="page"></div></div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var W = 1080, H = 1527, MAX = 7, AD_MIN = 120, KEY = 'eogul-ilbo-v1';
+  var LV = ['평온', '조금 억울', '억울', '매우 억울', '원통'];
+  var DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var uid = function () { return Math.random().toString(36).slice(2, 8); };
+
+  function today() { var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  function art(text) { return { id: uid(), text: text || '', img: '', cap: '' }; }
+
+  function sample() {
+    return {
+      date: today(), issue: 1, lv: 4, font: 'serif', ad: '억울할 땐 일단 밥부터 먹자',
+      arts: [
+        art('[예시] 마감 10분 전 "제목 바꿔라"…편집부 오늘도 억울했다\n세 번 고친 제목, 결국 처음 안으로 복귀\n편집기자들 "판은 우리가 짜는데 칭찬은 기사가 받는다"\n\n이 기사는 화면이 어떻게 짜이는지 보여주기 위한 예시다. 왼쪽 칸의 글을 지우고 실제 기사를 붙여넣으면 지면이 바로 바뀐다.\n\n마감을 10분 앞둔 편집국에서 머리기사 제목이 세 차례 바뀌었다. 첫 번째 안은 "너무 평범하다"는 이유로, 두 번째 안은 "너무 세다"는 이유로 반려됐다. 세 번째 안은 글자 수가 두 자 넘쳤다.\n\n최종 제목은 처음 안으로 돌아갔다. 담당 편집기자는 "돌고 돌아 제자리"라며 "그래도 판은 제시간에 넘겼다"고 말했다.\n\n편집부에 따르면 이런 일은 드물지 않다. 기사 분량이 예고 없이 늘어나거나 사진이 마감 직전에 교체되는 경우도 잦다. 그때마다 단을 다시 나누고 제목 크기를 조정하는 일은 편집기자 몫이다.\n\n한 편집기자는 "독자는 제목을 보고 기사를 읽을지 정한다"며 "제목 한 줄에 들이는 시간이 본문 한 단보다 길 때도 있다"고 했다. 그는 "지면에 이름이 실리지 않는 것은 억울하지만, 판이 깔끔하게 떨어지는 날은 그것으로 충분하다"고 덧붙였다.\n\n편집부는 이날도 정시에 강판했다.'),
+        art('[예시] "30줄 넘쳤습니다"…기사는 늘고 지면은 그대로\n\n취재기자가 보낸 기사가 배정된 분량을 30줄 넘겼다. 편집기자는 줄일 곳을 찾았고, 취재기자는 "한 줄도 뺄 수 없다"고 답했다.\n\n협의 끝에 사진 크기를 줄이고 마지막 두 문단을 덜어냈다. 덜어낸 문단은 3면으로 넘어갔다.\n\n편집부 관계자는 "지면은 고무줄이 아니다"라면서도 "넘치는 기사를 받아내는 것도 실력"이라고 말했다.'),
+        art('[예시] 야근 뒤 치킨, 억울함 해소에 효과\n\n편집부 자체 집계 결과 야근한 날 치킨을 먹은 기자의 다음 날 출근 표정이 그렇지 않은 기자보다 밝았다. 표본은 세 명이다.\n\n부서 막내는 "통계라고 부르기엔 민망하지만 체감은 확실하다"고 전했다. 편집부는 조사를 계속할 방침이다.'),
+        art('[예시] 오늘 판도 무사히 나갔다\n\n초판 강판 시각은 평소와 같았다. 오탈자는 발견되지 않았다. 편집부는 "아무 일 없는 날이 가장 잘한 날"이라고 밝혔다.\n\n퇴근길 편집기자들은 내일 판 걱정을 잠시 접어두기로 했다.')
+      ]
+    };
+  }
+
+  function load() {
+    try {
+      var s = JSON.parse(localStorage.getItem(KEY));
+      if (s && Array.isArray(s.arts)) return s;
+    } catch (e) {}
+    return null;
+  }
+  var saveT;
+  function save() {
+    clearTimeout(saveT);
+    saveT = setTimeout(function () { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }, 300);
+  }
+
+  var S = load() || sample();
+
+  /* ---------- 붙여넣은 글 → 꼬리표 / 제목 / 부제 / 본문 ---------- */
+  function isSub(s) {
+    return s.length <= 45 && !/[.。?!]$/.test(s) && !/(기자|특파원)\s*=?$|@|^\(.*=.*\)/.test(s);
+  }
+  function parse(text) {
+    var lines = String(text || '').replace(/\r/g, '').split('\n').map(function (s) { return s.trim(); });
+    while (lines.length && !lines[0]) lines.shift();
+    var head = lines.shift() || '', subs = [];
+    while (lines.length && lines[0] && subs.length < 3 && isSub(lines[0])) subs.push(lines.shift());
+    var paras = lines.filter(Boolean);
+    if (!paras.length && subs.length) { paras = subs; subs = []; }
+    subs = subs.map(function (s) { return s.replace(/^[-–—·ㆍ■▶▷…\s]+/, ''); });
+    var tags = [], m;
+    while ((m = head.match(/^\[([^\]]{1,6})\]\s*/))) { tags.push(m[1]); head = head.slice(m[0].length); }
+    return { tags: tags, head: head, subs: subs, paras: paras };
+  }
+
+  function spans(n) {
+    return [[], [[6]], [[4, 2]], [[4, 2], [6]], [[4, 2], [3, 3]], [[4, 2], [2, 2, 2]], [[4, 2], [3, 3], [3, 3]], [[4, 2], [2, 2, 2], [3, 3]]][Math.min(n, MAX)];
+  }
+
+  /* ---------- 지면 그리기 ---------- */
+  function renderPage() {
+    var page = $('#page');
+    var arts = S.arts.map(function (a) { var p = parse(a.text); p.img = a.img; p.cap = a.cap; return p; })
+      .filter(function (a) { return a.head || a.paras.length || a.img; }).slice(0, MAX);
+    var d = new Date((S.date || today()) + 'T00:00:00');
+    if (isNaN(d)) d = new Date();
+    var lv = Math.min(5, Math.max(1, +S.lv || 3));
+    var html = '<header class="mast"><div class="mast-row">' +
+      '<div class="ear l"><b>오늘의 억울지수</b><div class="pips">' + '●'.repeat(lv) + '○'.repeat(5 - lv) + '</div><div class="lv">' + LV[lv - 1] + '</div></div>' +
+      '<h1 class="mast-title">억울일보</h1>' +
+      '<div class="ear r"><strong>' + d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 ' + DAYS[d.getDay()] + '요일</strong>제' + esc(S.issue || 1) + '호 · 1판</div>' +
+      '</div><div class="mast-rule"></div></header>';
+
+    if (!arts.length) {
+      html += '<div class="empty">왼쪽 칸에 기사를 붙여넣으면<br>여기에 1면이 짜입니다</div>';
+    } else {
+      var k = 0;
+      spans(arts.length).forEach(function (row) {
+        html += '<section class="row">';
+        row.forEach(function (sp) {
+          var a = arts[k], lead = k === 0;
+          html += '<article class="art' + (lead ? ' lead' : '') + '" data-span="' + sp + '" style="grid-column:span ' + sp + ';--c:' + sp + '">' +
+            '<h2 class="hd"' + (lead ? ' data-max="' + (sp === 6 ? 80 : 64) + '"' : '') + '>' +
+            a.tags.map(function (t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('') + esc(a.head) + '</h2>' +
+            (a.subs.length ? '<div class="subs">' + a.subs.map(function (s) { return '<p class="sub">' + esc(s) + '</p>'; }).join('') + '</div>' : '') +
+            (a.img ? '<figure><img src="' + esc(a.img) + '" alt="">' + (a.cap ? '<figcaption>' + esc(a.cap) + '</figcaption>' : '') + '</figure>' : '') +
+            '<div class="body">' + a.paras.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('') + '</div>' +
+            '<div class="jump" hidden>▶ ' + (k + 2) + '면에 계속</div></article>';
+          k++;
+        });
+        html += '</section>';
+      });
+      if ((S.ad || '').trim()) html += '<aside class="ad"><small>전면광고 아님</small><p>' + esc(S.ad.trim()) + '</p></aside>';
+    }
+    page.className = 'page' + (S.font === 'gothic' ? ' gothic' : '');
+    page.innerHTML = html;
+    fit();
+  }
+
+  /* ---------- 지면 높이에 맞춰 넘치는 기사 자르기 ---------- */
+  function fit() {
+    var page = $('#page'), rows = [].slice.call(page.querySelectorAll('.row'));
+    if (!rows.length) return;
+    page.querySelectorAll('.lead .hd').forEach(function (h) {
+      var fs = +h.dataset.max; h.style.fontSize = fs + 'px';
+      while (fs > 38 && h.offsetHeight > fs * 1.2 * 2 + 4) { fs -= 2; h.style.fontSize = fs + 'px'; }
+    });
+    var cs = getComputedStyle(page);
+    var inner = page.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    var A = inner - page.querySelector('.mast').offsetHeight - (page.querySelector('.ad') ? AD_MIN + 16 : 0);
+    var total = function () { return rows.reduce(function (s, r) { return s + r.offsetHeight; }, 0); };
+    /* 기사가 모자라 지면이 비면 본문 활자를 키워서 채운다 */
+    page.style.setProperty('--z', 1);
+    if (total() <= A) {
+      for (var z = 1.05; z <= 1.6; z += .05) {
+        page.style.setProperty('--z', z.toFixed(2));
+        if (total() > A) { page.style.setProperty('--z', (z - .05).toFixed(2)); break; }
+      }
+      return;
+    }
+    var nat = rows.map(function (r) { return r.offsetHeight; });
+
+    var w = rows.map(function (r, i) { return i ? 3 : 5; }), h = [], R = A;
+    var open = rows.map(function (r, i) { return i; });
+    var sumw = function () { return open.reduce(function (s, i) { return s + w[i]; }, 0); };
+    while (open.length) {
+      var sw = sumw(), ok = open.filter(function (i) { return nat[i] <= R * w[i] / sw; });
+      if (!ok.length) break;
+      ok.forEach(function (i) { h[i] = nat[i]; R -= nat[i]; });
+      open = open.filter(function (i) { return ok.indexOf(i) < 0; });
+    }
+    var sw2 = sumw();
+    open.forEach(function (i) {
+      var r = rows[i], rc = getComputedStyle(r);
+      h[i] = Math.floor(R * w[i] / sw2);
+      r.style.height = h[i] + 'px';
+      var innerH = h[i] - parseFloat(rc.paddingTop) - parseFloat(rc.paddingBottom) - parseFloat(rc.borderTopWidth);
+      r.querySelectorAll('.art').forEach(function (a) {
+        var b = a.querySelector('.body'), lh = parseFloat(getComputedStyle(b).lineHeight) || 23;
+        var avail = innerH - b.offsetTop;
+        if (b.offsetHeight > avail) {
+          b.style.height = Math.max(2, Math.floor((avail - 22) / lh)) * lh + 'px';
+          b.classList.add('fill');
+          a.querySelector('.jump').hidden = false;
+        }
+      });
+    });
+  }
+
+  function scale() {
+    var st = $('#stage'), s = st.clientWidth / W;
+    $('#page').style.transform = 'scale(' + s + ')';
+    st.style.height = H * s + 'px';
+  }
+
+  /* ---------- 편집 칸 ---------- */
+  function renderEditor() {
+    $('#list').innerHTML = S.arts.map(function (a, i) {
+      return '<section class="card' + (i ? '' : ' first') + '" data-id="' + a.id + '">' +
+        '<div class="card-h"><b>' + (i ? (i + 1) + '번 기사' : '머리기사') + '</b><span class="sp"></span>' +
+        '<button class="btn sm" type="button" data-act="up"' + (i ? '' : ' disabled') + ' aria-label="위로 올리기">↑</button>' +
+        '<button class="btn sm" type="button" data-act="down"' + (i < S.arts.length - 1 ? '' : ' disabled') + ' aria-label="아래로 내리기">↓</button>' +
+        '<button class="btn sm" type="button" data-act="del">삭제</button></div>' +
+        '<textarea id="t-' + a.id + '" data-f="text" rows="7" placeholder="기사를 통째로 붙여넣으세요. 첫 줄이 제목이 됩니다.">' + esc(a.text) + '</textarea>' +
+        '<div class="photo">' + (a.img
+          ? '<img src="' + esc(a.img) + '" alt=""><input type="text" id="c-' + a.id + '" data-f="cap" placeholder="사진 설명" value="' + esc(a.cap) + '"><button class="btn sm" type="button" data-act="rmimg">사진 빼기</button>'
+          : '<label class="btn sm file">사진 넣기<input type="file" accept="image/*" id="f-' + a.id + '" data-f="file"></label>') +
+        '</div></section>';
+    }).join('');
+    $('#add').disabled = S.arts.length >= MAX;
+  }
+
+  function find(el) {
+    var c = el.closest('.card[data-id]');
+    if (!c) return -1;
+    for (var i = 0; i < S.arts.length; i++) if (S.arts[i].id === c.dataset.id) return i;
+    return -1;
+  }
+
+  function setImage(i, file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    var fr = new FileReader();
+    fr.onload = function () {
+      var im = new Image();
+      im.onload = function () {
+        var m = Math.min(1, 1400 / Math.max(im.width, im.height));
+        var c = document.createElement('canvas');
+        c.width = Math.round(im.width * m); c.height = Math.round(im.height * m);
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        S.arts[i].img = c.toDataURL('image/jpeg', .85);
+        renderEditor(); renderPage(); save();
+      };
+      im.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+
+  var raf;
+  function refresh() { cancelAnimationFrame(raf); raf = requestAnimationFrame(renderPage); save(); }
+
+  var list = $('#list');
+  list.addEventListener('input', function (e) {
+    var i = find(e.target), f = e.target.dataset.f;
+    if (i < 0 || (f !== 'text' && f !== 'cap')) return;
+    S.arts[i][f] = e.target.value; refresh();
+  });
+  list.addEventListener('change', function (e) {
+    var i = find(e.target);
+    if (i >= 0 && e.target.dataset.f === 'file') setImage(i, e.target.files[0]);
+  });
+  list.addEventListener('paste', function (e) {
+    var i = find(e.target), files = e.clipboardData && e.clipboardData.files;
+    if (i >= 0 && files && files.length && /^image\//.test(files[0].type)) { e.preventDefault(); setImage(i, files[0]); }
+  });
+  list.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var i = find(b), act = b.dataset.act; if (i < 0) return;
+    if (act === 'del') { if (!arm(b, '한 번 더 누르면 삭제')) return; S.arts.splice(i, 1); }
+    else if (act === 'rmimg') { S.arts[i].img = ''; S.arts[i].cap = ''; }
+    else {
+      var j = i + (act === 'up' ? -1 : 1); if (j < 0 || j >= S.arts.length) return;
+      var t = S.arts[i]; S.arts[i] = S.arts[j]; S.arts[j] = t;
+    }
+    renderEditor(); refresh();
+  });
+
+  /* confirm() 대신: 한 번 누르면 경고로 바뀌고, 다시 누르면 실행 */
+  function arm(b, msg) {
+    if (b.classList.contains('armed')) return true;
+    var old = b.textContent;
+    b.classList.add('armed'); b.textContent = msg;
+    setTimeout(function () { if (b.isConnected) { b.classList.remove('armed'); b.textContent = old; } }, 2500);
+    return false;
+  }
+
+  $('#add').addEventListener('click', function () {
+    if (S.arts.length >= MAX) return;
+    var a = art(''); S.arts.push(a); renderEditor(); refresh();
+    var t = document.getElementById('t-' + a.id); if (t) t.focus();
+  });
+  $('#clear').addEventListener('click', function () {
+    if (!arm(this, '한 번 더 누르면 모두 지움')) return;
+    S.arts = [art('')]; renderEditor(); refresh();
+    this.classList.remove('armed'); this.textContent = '모두 비우기';
+  });
+  $('#sample').addEventListener('click', function () {
+    if (!arm(this, '한 번 더 누르면 예시로 덮어씀')) return;
+    S = sample(); syncOpts(); renderEditor(); refresh();
+    this.classList.remove('armed'); this.textContent = '예시 넣기';
+  });
+  $('#solo').addEventListener('click', function () {
+    var on = document.body.classList.toggle('solo');
+    this.textContent = on ? '편집으로 돌아가기' : '지면만 보기';
+    scale();
+  });
+  var pr = $('#print');
+  if (pr) pr.addEventListener('click', function () { window.print(); });
+
+  function syncOpts() {
+    $('#o-date').value = S.date || today();
+    $('#o-issue').value = S.issue || 1;
+    $('#o-lv').value = S.lv || 3;
+    $('#o-lvname').textContent = '· ' + LV[(S.lv || 3) - 1];
+    $('#o-font').value = S.font || 'serif';
+    $('#o-ad').value = S.ad || '';
+  }
+  [['#o-date', 'date'], ['#o-issue', 'issue'], ['#o-lv', 'lv'], ['#o-font', 'font'], ['#o-ad', 'ad']].forEach(function (p) {
+    $(p[0]).addEventListener('input', function () {
+      S[p[1]] = p[1] === 'lv' ? +this.value : this.value;
+      if (p[1] === 'lv') $('#o-lvname').textContent = '· ' + LV[S.lv - 1];
+      refresh();
+    });
+  });
+
+  syncOpts(); renderEditor(); scale(); renderPage();
+  if (window.ResizeObserver) new ResizeObserver(scale).observe($('#stage')); else window.addEventListener('resize', scale);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { renderPage(); });
+})();
+</script>
+</body>
+</html>
